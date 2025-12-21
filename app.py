@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import pytz  # <--- NEW IMPORT
+import pytz
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date, datetime
 
 # --- CONFIGURATION ---
 SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
-# Define Calgary Timezone
 CALGARY_TZ = pytz.timezone('America/Edmonton')
 
 st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
@@ -54,7 +53,6 @@ def get_index(options, value):
         return 0
 
 def get_current_date():
-    """Returns the current date in Calgary time."""
     return datetime.now(CALGARY_TZ).date()
 
 # --- APP INTERFACE ---
@@ -68,7 +66,6 @@ with tab1:
     with st.form("add_transaction_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            # FIX: Use get_current_date() instead of date.today()
             date_input = st.date_input("Date", get_current_date())
             owner = st.selectbox("Owner", owner_options)
             amount = st.number_input("Amount ($)", step=0.01, format="%.2f")
@@ -86,8 +83,16 @@ with tab1:
             elif payment_from == payment_to:
                  st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
             else:
+                # --- NEW LOGIC: Calculate Next Row Explicitly ---
+                # Length of data + 2 (1 for header, 1 to get to the next empty line)
+                next_row = len(trans_data) + 2
+                
                 new_row = [str(date_input), owner, payment_from, payment_to, category, desc, amount]
-                trans_ws.append_row(new_row)
+                
+                # Use update instead of append_row to force the specific location
+                range_name = f"A{next_row}:G{next_row}"
+                trans_ws.update(range_name=range_name, values=[new_row])
+                
                 st.success("Saved!")
                 st.rerun()
 
@@ -131,7 +136,6 @@ with tab3:
                 try:
                     current_date = pd.to_datetime(current_data['Date']).date()
                 except:
-                    # FIX: Fallback to Calgary time if parsing fails
                     current_date = get_current_date()
 
                 with st.form("edit_form"):
