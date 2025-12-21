@@ -12,33 +12,23 @@ st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 # --- GOOGLE SHEETS CONNECTION ---
 def get_google_sheet_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Read secrets
     creds_dict = dict(st.secrets["gcp_service_account"])
-    
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     
     sheet = client.open(SHEET_NAME)
-    trans_worksheet = sheet.worksheet("Transaction")
-    accounts_worksheet = sheet.worksheet("Accounts")
-    
-    return trans_worksheet, accounts_worksheet
+    return sheet
 
 # --- LOAD DATA ---
 try:
-    trans_ws, accounts_ws = get_google_sheet_data()
+    sheet = get_google_sheet_data()
+    trans_ws = sheet.worksheet("Transaction")
+    accounts_ws = sheet.worksheet("Accounts")
     
     # Load Accounts
     accounts_data = accounts_ws.get_all_records()
     accounts_df = pd.DataFrame(accounts_data)
-    
-    # Populate Dropdowns
-    if not accounts_df.empty:
-        account_options = accounts_df['Account'].unique().tolist()
-        # Clean up data for display (optional: ensure amounts are strings or floats as needed)
-    else:
-        account_options = []
+    account_options = accounts_df['Account'].unique().tolist() if not accounts_df.empty else []
 
     # Load Transactions
     trans_data = trans_ws.get_all_records()
@@ -55,7 +45,6 @@ to_options = ["External Merchant"] + account_options
 # --- APP INTERFACE ---
 st.title("💰 Jimmy & Lily Finance")
 
-# Create 3 Tabs for better mobile navigation
 tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "📜 History"])
 
 # --- TAB 1: ENTRY FORM ---
@@ -63,12 +52,10 @@ with tab1:
     st.header("New Transaction")
     with st.form("transaction_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        
         with col1:
             date_input = st.date_input("Date", date.today())
             owner = st.selectbox("Owner", ["Jimmy", "Lily", "Joint"])
             amount = st.number_input("Amount ($)", step=0.01, format="%.2f")
-            
         with col2:
             payment_from = st.selectbox("From", from_options, index=0)
             payment_to = st.selectbox("To", to_options, index=0)
@@ -76,55 +63,74 @@ with tab1:
                 "Food/Groceries", "Housing", "Childcare", "Debt Repayment", 
                 "Transportation", "Shopping", "Income", "Transfer", "Other"
             ])
-
-        desc = st.text_input("Description", placeholder="e.g. Costco, Rent")
-
+        desc = st.text_input("Description", placeholder="e.g. Costco")
         submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
         if submitted:
-            new_row = [
-                str(date_input),
-                owner,
-                payment_from,
-                payment_to,
-                category,
-                desc,
-                amount
-            ]
+            new_row = [str(date_input), owner, payment_from, payment_to, category, desc, amount]
             trans_ws.append_row(new_row)
             st.success("Saved!")
+            # Wait a moment then rerun to update history immediately
+            st.rerun()
 
 # --- TAB 2: ACCOUNTS OVERVIEW ---
 with tab2:
     st.header("Current Balances")
-    # Button to refresh data manually in case you edited the sheet elsewhere
-    if st.button("Refresh Data"):
+    if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
+        st.rerun()
         
     if not accounts_df.empty:
-        # Display the main columns to save space
         display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
-        
-        # Check if columns exist before trying to show them
         existing_cols = [c for c in display_cols if c in accounts_df.columns]
-        
-        st.dataframe(
-            accounts_df[existing_cols], 
-            use_container_width=True, 
-            hide_index=True
-        )
+        st.dataframe(accounts_df[existing_cols], use_container_width=True, hide_index=True)
     else:
         st.info("No account data found.")
 
-# --- TAB 3: HISTORY ---
+# --- TAB 3: HISTORY & DELETE ---
 with tab3:
-    st.header("Recent Activity")
+    st.header("Manage Transactions")
+    
     if not trans_df.empty:
-        # Show newest first
-        st.dataframe(
-            trans_df.tail(15).iloc[::-1], 
-            use_container_width=True,
-            hide_index=True
-        )
+        # --- DELETE SECTION ---
+        with st.expander("🗑️ Delete a Transaction", expanded=False):
+            st.warning("Warning: This permanently removes the row from Google Sheets.")
+            
+            # Create a list of readable strings for the dropdown
+            # We add 2 to index because: DataFrame starts at 0, Sheet Header is 1. 
+            # So DF index 0 is Sheet Row 2.
+            trans_df['GS_Row_Num'] = trans_df.index + 2
+            
+            # Create a combined string: "Row 5: 2025-12-20 | Costco | $100.00"
+            trans_df['Label'] = (
+                "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
+                trans_df['Date'].astype(str) + " | " + 
+                trans_df['Description'] + " | $" + 
+                trans_df['Amount'].astype(str)
+            )
+            
+            # Show newest first so the mistake is likely at the top
+            delete_options = trans_df['Label'].tolist()[::-1]
+            
+            selected_to_delete = st.selectbox("Select Entry to Delete", delete_options)
+            
+            if st.button("Confirm Delete 🗑️", type="primary"):
+                if selected_to_delete:
+                    # Extract the row number from the string "Row 5: ..."
+                    row_num_to_delete = int(selected_to_delete.split(":")[0].replace("Row ", ""))
+                    
+                    try:
+                        trans_ws.delete_rows(row_num_to_delete)
+                        st.success(f"Deleted row {row_num_to_delete} successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Could not delete: {e}")
+
+        # --- VIEW HISTORY ---
+        st.markdown("### Recent Activity")
+        # Display clean dataframe without the helper columns
+        display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
+        st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
+        
     else:
         st.info("No history yet.")
