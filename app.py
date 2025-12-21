@@ -83,13 +83,15 @@ with tab1:
             elif payment_from == payment_to:
                  st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
             else:
-                # --- NEW LOGIC: Calculate Next Row Explicitly ---
-                # Length of data + 2 (1 for header, 1 to get to the next empty line)
-                next_row = len(trans_data) + 2
+                # --- FINAL FIX: COUNT FILLED DATES TO FIND ROW ---
+                # We fetch just Column A (Date). If there are 10 dates, len is 10.
+                # We write to row 11. This ignores all other confusing sheet data.
+                existing_dates = trans_ws.col_values(1)
+                next_row = len(existing_dates) + 1
                 
                 new_row = [str(date_input), owner, payment_from, payment_to, category, desc, amount]
                 
-                # Use update instead of append_row to force the specific location
+                # Write specifically to that row number
                 range_name = f"A{next_row}:G{next_row}"
                 trans_ws.update(range_name=range_name, values=[new_row])
                 
