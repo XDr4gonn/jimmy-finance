@@ -1,25 +1,26 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import json  # <--- NEW IMPORT
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
 # --- CONFIGURATION ---
-SHEET_NAME = "Financial Blueprint - Jimmy & Lily"  # The exact name of your Google Sheet
-CREDENTIALS_FILE = "credentials.json"
+SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
 
 st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 
 # --- GOOGLE SHEETS CONNECTION ---
 def get_google_sheet_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    
+    # NEW LOGIC: Read the raw JSON string from secrets
+    json_creds = json.loads(st.secrets["service_account_json"])
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
     client = gspread.authorize(creds)
     
-    # Open the spreadsheet
     sheet = client.open(SHEET_NAME)
-    
-    # Get Tabs
     trans_worksheet = sheet.worksheet("Transaction")
     accounts_worksheet = sheet.worksheet("Accounts")
     
@@ -101,3 +102,4 @@ if not trans_df.empty:
 else:
 
     st.info("No transactions found on the sheet.")
+
