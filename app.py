@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import json  # <--- NEW IMPORT
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
@@ -14,10 +13,11 @@ st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 def get_google_sheet_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # NEW LOGIC: Read the raw JSON string from secrets
-    json_creds = json.loads(st.secrets["service_account_json"])
+    # NEW LOGIC: Streamlit automatically converts the TOML secrets into a dictionary
+    # We convert it to a standard Python dict just to be safe for the library
+    creds_dict = dict(st.secrets["gcp_service_account"])
     
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     
     sheet = client.open(SHEET_NAME)
@@ -55,7 +55,6 @@ with st.form("transaction_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Date needs to be string for Google Sheets usually
         date_input = st.date_input("Date", date.today())
         owner = st.selectbox("Owner", ["Jimmy", "Lily", "Joint"])
         amount = st.number_input("Amount (CAD$)", step=0.01, format="%.2f")
@@ -73,8 +72,6 @@ with st.form("transaction_form", clear_on_submit=True):
     submitted = st.form_submit_button("☁️ Save to Google Sheets")
 
     if submitted:
-        # Prepare row data
-        # Note: We convert date to string explicitly for JSON compatibility
         new_row = [
             str(date_input),
             owner,
@@ -85,21 +82,12 @@ with st.form("transaction_form", clear_on_submit=True):
             amount
         ]
         
-        # Append to Google Sheet
         trans_ws.append_row(new_row)
-        
         st.success("✅ Saved directly to the Cloud!")
-        
-        # Optional: Clear cache to force reload next time (Streamlit specific optimization)
-        # st.experimental_rerun() is deprecated in newer versions, usually not needed for simple appends
 
 # --- DISPLAY RECENT TRANSACTIONS ---
 st.markdown("### 📝 Recent Cloud Data")
 if not trans_df.empty:
-    # We show the data we loaded at the start. 
-    # To see the brand new row, you'd usually need to refresh the page.
     st.dataframe(trans_df.tail(5).iloc[::-1], use_container_width=True)
 else:
-
     st.info("No transactions found on the sheet.")
-
