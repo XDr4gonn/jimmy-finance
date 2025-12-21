@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import pytz  # <--- NEW IMPORT
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date, datetime
 
 # --- CONFIGURATION ---
 SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
+# Define Calgary Timezone
+CALGARY_TZ = pytz.timezone('America/Edmonton')
 
 st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 
@@ -45,11 +48,14 @@ cat_options = ["Food/Groceries", "Housing", "Childcare", "Debt Repayment", "Tran
 
 # --- HELPER FUNCTIONS ---
 def get_index(options, value):
-    """Helper to find the index of a value in a list (for dropdown defaults)."""
     try:
         return options.index(value)
     except ValueError:
         return 0
+
+def get_current_date():
+    """Returns the current date in Calgary time."""
+    return datetime.now(CALGARY_TZ).date()
 
 # --- APP INTERFACE ---
 st.title("💰 Jimmy & Lily Finance")
@@ -62,7 +68,8 @@ with tab1:
     with st.form("add_transaction_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            date_input = st.date_input("Date", date.today())
+            # FIX: Use get_current_date() instead of date.today()
+            date_input = st.date_input("Date", get_current_date())
             owner = st.selectbox("Owner", owner_options)
             amount = st.number_input("Amount ($)", step=0.01, format="%.2f")
         with col2:
@@ -103,8 +110,6 @@ with tab3:
     st.header("Manage Transactions")
     
     if not trans_df.empty:
-        # Prepare Data for Dropdowns
-        # Calculate Google Sheet Row Number (Index + 2 because of header)
         trans_df['GS_Row_Num'] = trans_df.index + 2
         trans_df['Label'] = (
             "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
@@ -112,7 +117,6 @@ with tab3:
             trans_df['Description'] + " | $" + 
             trans_df['Amount'].astype(str)
         )
-        # Reverse list to show newest first
         selection_options = trans_df['Label'].tolist()[::-1]
 
         # --- SECTION: EDIT ---
@@ -120,19 +124,16 @@ with tab3:
             edit_selection = st.selectbox("Select Transaction to Edit", selection_options, key="edit_select")
             
             if edit_selection:
-                # Find the data for the selected row
                 row_num = int(edit_selection.split(":")[0].replace("Row ", ""))
-                # Adjust for 0-based dataframe index (Row 2 in sheet is Index 0)
                 df_index = row_num - 2
                 current_data = trans_df.loc[df_index]
                 
-                # Parse Date
                 try:
                     current_date = pd.to_datetime(current_data['Date']).date()
                 except:
-                    current_date = date.today()
+                    # FIX: Fallback to Calgary time if parsing fails
+                    current_date = get_current_date()
 
-                # --- EDIT FORM ---
                 with st.form("edit_form"):
                     st.caption(f"Editing Row {row_num}")
                     ecol1, ecol2 = st.columns(2)
@@ -150,18 +151,14 @@ with tab3:
                     update_submitted = st.form_submit_button("💾 Update Transaction", type="primary")
                     
                     if update_submitted:
-                        # Logic Validation
                         if new_from == "External Source" and new_to == "External Merchant":
                             st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
                         elif new_from == new_to:
                             st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
                         else:
-                            # Update Google Sheet
-                            # Note: update uses range (A5:G5).
                             range_name = f"A{row_num}:G{row_num}"
                             updated_values = [[str(new_date), new_owner, new_from, new_to, new_cat, new_desc, new_amount]]
                             trans_ws.update(range_name=range_name, values=updated_values)
-                            
                             st.success("Transaction updated successfully!")
                             st.rerun()
 
