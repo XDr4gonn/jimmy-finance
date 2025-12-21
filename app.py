@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import date
+from datetime import date, datetime
 
 # --- CONFIGURATION ---
 SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
@@ -15,7 +15,6 @@ def get_google_sheet_data():
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    
     sheet = client.open(SHEET_NAME)
     return sheet
 
@@ -41,42 +40,45 @@ except Exception as e:
 account_options.sort()
 from_options = ["External Source"] + account_options
 to_options = ["External Merchant"] + account_options
+owner_options = ["Jimmy", "Lily", "Joint"]
+cat_options = ["Food/Groceries", "Housing", "Childcare", "Debt Repayment", "Transportation", "Shopping", "Income", "Transfer", "Other"]
+
+# --- HELPER FUNCTIONS ---
+def get_index(options, value):
+    """Helper to find the index of a value in a list (for dropdown defaults)."""
+    try:
+        return options.index(value)
+    except ValueError:
+        return 0
 
 # --- APP INTERFACE ---
 st.title("💰 Jimmy & Lily Finance")
 
-tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "📜 History"])
+tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "✏️ Manage History"])
 
 # --- TAB 1: ENTRY FORM ---
 with tab1:
     st.header("New Transaction")
-    with st.form("transaction_form", clear_on_submit=True):
+    with st.form("add_transaction_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             date_input = st.date_input("Date", date.today())
-            owner = st.selectbox("Owner", ["Jimmy", "Lily", "Joint"])
+            owner = st.selectbox("Owner", owner_options)
             amount = st.number_input("Amount ($)", step=0.01, format="%.2f")
         with col2:
             payment_from = st.selectbox("From", from_options, index=0)
             payment_to = st.selectbox("To", to_options, index=0)
-            category = st.selectbox("Category", [
-                "Food/Groceries", "Housing", "Childcare", "Debt Repayment", 
-                "Transportation", "Shopping", "Income", "Transfer", "Other"
-            ])
+            category = st.selectbox("Category", cat_options)
         desc = st.text_input("Description", placeholder="e.g. Costco")
         
         submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
         if submitted:
-            # --- NEW VALIDATION LOGIC ---
             if payment_from == "External Source" and payment_to == "External Merchant":
-                st.error("🚫 Invalid Transaction: Money cannot go from 'External' to 'External'. One side must be your account.")
-            
+                st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
             elif payment_from == payment_to:
-                 st.error("🚫 Invalid Transaction: 'From' and 'To' cannot be the same account.")
-                 
+                 st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
             else:
-                # Only save if logic passes
                 new_row = [str(date_input), owner, payment_from, payment_to, category, desc, amount]
                 trans_ws.append_row(new_row)
                 st.success("Saved!")
@@ -96,36 +98,88 @@ with tab2:
     else:
         st.info("No account data found.")
 
-# --- TAB 3: HISTORY & DELETE ---
+# --- TAB 3: MANAGE HISTORY (EDIT & DELETE) ---
 with tab3:
     st.header("Manage Transactions")
     
     if not trans_df.empty:
+        # Prepare Data for Dropdowns
+        # Calculate Google Sheet Row Number (Index + 2 because of header)
+        trans_df['GS_Row_Num'] = trans_df.index + 2
+        trans_df['Label'] = (
+            "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
+            trans_df['Date'].astype(str) + " | " + 
+            trans_df['Description'] + " | $" + 
+            trans_df['Amount'].astype(str)
+        )
+        # Reverse list to show newest first
+        selection_options = trans_df['Label'].tolist()[::-1]
+
+        # --- SECTION: EDIT ---
+        with st.expander("✏️ Edit a Transaction", expanded=False):
+            edit_selection = st.selectbox("Select Transaction to Edit", selection_options, key="edit_select")
+            
+            if edit_selection:
+                # Find the data for the selected row
+                row_num = int(edit_selection.split(":")[0].replace("Row ", ""))
+                # Adjust for 0-based dataframe index (Row 2 in sheet is Index 0)
+                df_index = row_num - 2
+                current_data = trans_df.loc[df_index]
+                
+                # Parse Date
+                try:
+                    current_date = pd.to_datetime(current_data['Date']).date()
+                except:
+                    current_date = date.today()
+
+                # --- EDIT FORM ---
+                with st.form("edit_form"):
+                    st.caption(f"Editing Row {row_num}")
+                    ecol1, ecol2 = st.columns(2)
+                    with ecol1:
+                        new_date = st.date_input("Date", current_date)
+                        new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
+                        new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
+                    with ecol2:
+                        new_from = st.selectbox("From", from_options, index=get_index(from_options, current_data['From']))
+                        new_to = st.selectbox("To", to_options, index=get_index(to_options, current_data['To']))
+                        new_cat = st.selectbox("Category", cat_options, index=get_index(cat_options, current_data['Category']))
+                    
+                    new_desc = st.text_input("Description", value=current_data['Description'])
+                    
+                    update_submitted = st.form_submit_button("💾 Update Transaction", type="primary")
+                    
+                    if update_submitted:
+                        # Logic Validation
+                        if new_from == "External Source" and new_to == "External Merchant":
+                            st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
+                        elif new_from == new_to:
+                            st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
+                        else:
+                            # Update Google Sheet
+                            # Note: update uses range (A5:G5).
+                            range_name = f"A{row_num}:G{row_num}"
+                            updated_values = [[str(new_date), new_owner, new_from, new_to, new_cat, new_desc, new_amount]]
+                            trans_ws.update(range_name=range_name, values=updated_values)
+                            
+                            st.success("Transaction updated successfully!")
+                            st.rerun()
+
+        # --- SECTION: DELETE ---
         with st.expander("🗑️ Delete a Transaction", expanded=False):
-            st.warning("Warning: This permanently removes the row from Google Sheets.")
-            
-            trans_df['GS_Row_Num'] = trans_df.index + 2
-            trans_df['Label'] = (
-                "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
-                trans_df['Date'].astype(str) + " | " + 
-                trans_df['Description'] + " | $" + 
-                trans_df['Amount'].astype(str)
-            )
-            
-            delete_options = trans_df['Label'].tolist()[::-1]
-            selected_to_delete = st.selectbox("Select Entry to Delete", delete_options)
+            delete_selection = st.selectbox("Select Transaction to Delete", selection_options, key="del_select")
             
             if st.button("Confirm Delete 🗑️", type="primary"):
-                if selected_to_delete:
-                    row_num_to_delete = int(selected_to_delete.split(":")[0].replace("Row ", ""))
+                if delete_selection:
+                    row_num_del = int(delete_selection.split(":")[0].replace("Row ", ""))
                     try:
-                        trans_ws.delete_rows(row_num_to_delete)
-                        st.success(f"Deleted row {row_num_to_delete} successfully!")
+                        trans_ws.delete_rows(row_num_del)
+                        st.success(f"Deleted row {row_num_del} successfully!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Could not delete: {e}")
 
-        # View History
+        # --- HISTORY VIEW ---
         st.markdown("### Recent Activity")
         display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
         st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
