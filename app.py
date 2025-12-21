@@ -13,7 +13,7 @@ st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 # --- GOOGLE SHEETS CONNECTION ---
 def get_google_sheet_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
     
     # Open the spreadsheet
@@ -99,4 +99,5 @@ if not trans_df.empty:
     # To see the brand new row, you'd usually need to refresh the page.
     st.dataframe(trans_df.tail(5).iloc[::-1], use_container_width=True)
 else:
+
     st.info("No transactions found on the sheet.")
