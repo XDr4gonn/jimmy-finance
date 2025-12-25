@@ -11,37 +11,46 @@ CALGARY_TZ = pytz.timezone('America/Edmonton')
 
 st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
 
-# --- SECURITY CHECK ---
+# --- SECURITY & USER DETECTION ---
 def check_password():
     """Returns `True` if the user had the correct password."""
     
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets["app_pin"]:
+        """Checks which PIN was entered and sets the user accordingly."""
+        entered_pin = st.session_state["password"]
+        
+        if entered_pin == st.secrets["jimmy_pin"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
+            st.session_state["current_user"] = "Jimmy"  # Identify Jimmy
+            del st.session_state["password"]
+            
+        elif entered_pin == st.secrets["lily_pin"]:
+            st.session_state["password_correct"] = True
+            st.session_state["current_user"] = "Lily"   # Identify Lily
+            del st.session_state["password"]
+            
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show input for password
         st.text_input(
-            "Enter 4-Digit PIN", type="password", on_change=password_entered, key="password"
+            "Enter Your PIN", type="password", on_change=password_entered, key="password"
         )
         return False
     elif not st.session_state["password_correct"]:
-        # Password was incorrect, show input again + error
         st.text_input(
-            "Enter 4-Digit PIN", type="password", on_change=password_entered, key="password"
+            "Enter Your PIN", type="password", on_change=password_entered, key="password"
         )
         st.error("😕 Incorrect PIN")
         return False
     else:
-        # Password was correct
         return True
 
 if check_password():
     # --- MAIN APP STARTS HERE ---
+    
+    # Identify who is logged in for the greeting
+    current_user = st.session_state.get("current_user", "Joint")
     
     # --- GOOGLE SHEETS CONNECTION ---
     def get_google_sheet_data():
@@ -62,7 +71,6 @@ if check_password():
         accounts_data = accounts_ws.get_all_records()
         accounts_df = pd.DataFrame(accounts_data)
         
-        # Create Unique Names (Owner - Account)
         if not accounts_df.empty:
             accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
             account_options = accounts_df['DisplayName'].unique().tolist()
@@ -94,14 +102,13 @@ if check_password():
         return datetime.now(CALGARY_TZ).date()
 
     # --- APP INTERFACE ---
-    st.title("💰 Jimmy & Lily Finance")
+    # Personalized Title
+    st.title(f"💰 {current_user}'s Finance View")
     
-    # Logout Button
     if st.sidebar.button("🔒 Lock App"):
         del st.session_state["password_correct"]
         st.rerun()
 
-    # DEFINING TABS (This was likely missing before!)
     tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "✏️ Manage History"])
 
     # --- TAB 1: ENTRY FORM ---
@@ -111,9 +118,12 @@ if check_password():
             col1, col2 = st.columns(2)
             with col1:
                 date_input = st.date_input("Date", get_current_date())
-                owner = st.selectbox("Owner (Initiator)", owner_options)
                 
-                # UPDATED: Blank by default, strict 2 decimals
+                # --- AUTO-SELECT OWNER ---
+                # We determine the index based on who logged in
+                default_owner_idx = get_index(owner_options, current_user)
+                owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
+                
                 amount = st.number_input(
                     "Amount ($)", 
                     min_value=0.0, 
@@ -127,12 +137,11 @@ if check_password():
                 payment_from = st.selectbox("From", from_options, index=0)
                 payment_to = st.selectbox("To", to_options, index=0)
                 category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
-            desc = st.text_input("Description", placeholder="e.g. E-Transfer to Lily")
+            desc = st.text_input("Description", placeholder="e.g. E-Transfer")
             
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
-                # Validation Checks
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
