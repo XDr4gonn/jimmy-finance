@@ -42,7 +42,6 @@ def check_password():
 
 if check_password():
     # --- MAIN APP STARTS HERE ---
-    # (Everything below this line runs ONLY if PIN is correct)
     
     # --- GOOGLE SHEETS CONNECTION ---
     def get_google_sheet_data():
@@ -97,65 +96,62 @@ if check_password():
     # --- APP INTERFACE ---
     st.title("💰 Jimmy & Lily Finance")
     
-    # Logout Button (Optional: clear session state to re-lock)
+    # Logout Button
     if st.sidebar.button("🔒 Lock App"):
         del st.session_state["password_correct"]
         st.rerun()
 
+    # DEFINING TABS (This was likely missing before!)
     tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "✏️ Manage History"])
 
     # --- TAB 1: ENTRY FORM ---
-with tab1:
-    st.header("New Transaction")
-    with st.form("add_transaction_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            date_input = st.date_input("Date", get_current_date())
-            owner = st.selectbox("Owner (Initiator)", owner_options)
-            
-            # UPDATED: value=None makes it blank by default. 
-            # format="%.2f" keeps it to 2 decimal places visually.
-            amount = st.number_input(
-                "Amount ($)", 
-                min_value=0.0, 
-                step=0.01, 
-                format="%.2f", 
-                value=None, 
-                placeholder="0.00"
-            )
-            
-        with col2:
-            payment_from = st.selectbox("From", from_options, index=0)
-            payment_to = st.selectbox("To", to_options, index=0)
-            category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
-        desc = st.text_input("Description", placeholder="e.g. E-Transfer to Lily")
-        
-        submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
+    with tab1:
+        st.header("New Transaction")
+        with st.form("add_transaction_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                date_input = st.date_input("Date", get_current_date())
+                owner = st.selectbox("Owner (Initiator)", owner_options)
+                
+                # UPDATED: Blank by default, strict 2 decimals
+                amount = st.number_input(
+                    "Amount ($)", 
+                    min_value=0.0, 
+                    step=0.01, 
+                    format="%.2f", 
+                    value=None, 
+                    placeholder="0.00"
+                )
 
-        if submitted:
-            # CHECK 1: Is Amount Empty?
-            if amount is None:
-                st.error("🚫 Please enter an amount.")
-            # CHECK 2: External to External
-            elif payment_from == "External Source" and payment_to == "External Merchant":
-                st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
-            # CHECK 3: Same Account
-            elif payment_from == payment_to:
-                 st.error("🚫 Invalid: 'From' and 'To' cannot be the exact same account.")
-            else:
-                existing_dates = trans_ws.col_values(1)
-                next_row = len(existing_dates) + 1
-                
-                # We round the amount to 2 decimals to ensure clean data in the sheet
-                final_amount = round(amount, 2)
-                
-                new_row = [str(date_input), owner, payment_from, payment_to, category, desc, final_amount]
-                
-                range_name = f"A{next_row}:G{next_row}"
-                trans_ws.update(range_name=range_name, values=[new_row])
-                
-                st.success("Saved!")
-                st.rerun()
+            with col2:
+                payment_from = st.selectbox("From", from_options, index=0)
+                payment_to = st.selectbox("To", to_options, index=0)
+                category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
+            desc = st.text_input("Description", placeholder="e.g. E-Transfer to Lily")
+            
+            submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
+
+            if submitted:
+                # Validation Checks
+                if amount is None:
+                    st.error("🚫 Please enter an amount.")
+                elif payment_from == "External Source" and payment_to == "External Merchant":
+                    st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
+                elif payment_from == payment_to:
+                     st.error("🚫 Invalid: 'From' and 'To' cannot be the exact same account.")
+                else:
+                    existing_dates = trans_ws.col_values(1)
+                    next_row = len(existing_dates) + 1
+                    
+                    final_amount = round(amount, 2)
+                    
+                    new_row = [str(date_input), owner, payment_from, payment_to, category, desc, final_amount]
+                    
+                    range_name = f"A{next_row}:G{next_row}"
+                    trans_ws.update(range_name=range_name, values=[new_row])
+                    
+                    st.success("Saved!")
+                    st.rerun()
 
     # --- TAB 2: ACCOUNTS OVERVIEW ---
     with tab2:
@@ -247,4 +243,3 @@ with tab1:
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No history yet.")
-
