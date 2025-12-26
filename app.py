@@ -59,7 +59,7 @@ if check_password():
         accounts_df = pd.DataFrame(accounts_data)
         
         if not accounts_df.empty:
-            # We create the display name for the UI only
+            # Create DisplayName: "Jimmy - Credit Card"
             accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
             account_options = accounts_df['DisplayName'].unique().tolist()
         else:
@@ -83,14 +83,13 @@ if check_password():
         try:
             return options.index(value)
         except ValueError:
-            return 0
+            return 0 # Default to first item if not found
 
     def get_current_date():
         return datetime.now(CALGARY_TZ).date()
 
-    # --- NEW: CLEAN ACCOUNT NAME ---
-    # This removes "Jimmy - " from "Jimmy - TD Checking" so it matches your spreadsheet
     def clean_account_name(display_name):
+        """Removes 'Jimmy - ' from 'Jimmy - TD Checking' to match Sheet names."""
         if " - " in display_name:
             return display_name.split(" - ", 1)[1]
         return display_name
@@ -111,14 +110,29 @@ if check_password():
             col1, col2 = st.columns(2)
             with col1:
                 date_input = st.date_input("Date", get_current_date())
+                
+                # 1. Auto-select Owner based on login
                 default_owner_idx = get_index(owner_options, current_user)
                 owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
+                
                 amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
 
             with col2:
-                payment_from = st.selectbox("From", from_options, index=0)
+                # 2. Auto-select 'From' based on login (NEW FEATURE)
+                default_from_val = "External Source" # Fallback
+                
+                if current_user == "Jimmy":
+                    default_from_val = "Jimmy - Credit Card"
+                elif current_user == "Lily":
+                    default_from_val = "Lily - Credit Card"
+                
+                # Use get_index to safely find it (defaults to 0 if account name doesn't exist exactly)
+                from_idx = get_index(from_options, default_from_val)
+                
+                payment_from = st.selectbox("From", from_options, index=from_idx)
                 payment_to = st.selectbox("To", to_options, index=0)
                 category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
+            
             desc = st.text_input("Description", placeholder="e.g. E-Transfer")
             
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
@@ -135,8 +149,7 @@ if check_password():
                     next_row = len(existing_dates) + 1
                     final_amount = round(amount, 2)
                     
-                    # --- FIX APPLIED HERE ---
-                    # We clean the names before saving to the sheet
+                    # Clean names before saving
                     final_from = clean_account_name(payment_from)
                     final_to = clean_account_name(payment_to)
                     
@@ -168,7 +181,6 @@ if check_password():
         
         if not trans_df.empty:
             trans_df['GS_Row_Num'] = trans_df.index + 2
-            # For history labels, we keep the raw data from the sheet (which is now clean)
             trans_df['Label'] = (
                 "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
                 trans_df['Date'].astype(str) + " | " + 
@@ -198,10 +210,7 @@ if check_password():
                             new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
                             new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
                         with ecol2:
-                            # Try to find the cleaned name in our full display options
-                            # We must match "TD Checking" back to "Jimmy - TD Checking" for the dropdown to show correctly
-                            
-                            # Helper to find the DisplayName that contains the short name
+                            # Helper to map short sheet names back to full display names
                             def find_full_name(short_name, options):
                                 for opt in options:
                                     if short_name == "External Source" or short_name == "External Merchant":
@@ -228,8 +237,7 @@ if check_password():
                                 st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
                             else:
                                 range_name = f"A{row_num}:G{row_num}"
-                                
-                                # Clean names again for edit
+                                # Clean names again
                                 clean_from = clean_account_name(new_from)
                                 clean_to = clean_account_name(new_to)
                                 
