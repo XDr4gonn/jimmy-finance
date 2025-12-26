@@ -16,40 +16,29 @@ def check_password():
     """Returns `True` if the user had the correct password."""
     
     def password_entered():
-        """Checks which PIN was entered and sets the user accordingly."""
         entered_pin = st.session_state["password"]
-        
         if entered_pin == st.secrets["jimmy_pin"]:
             st.session_state["password_correct"] = True
-            st.session_state["current_user"] = "Jimmy"  # Identify Jimmy
+            st.session_state["current_user"] = "Jimmy"
             del st.session_state["password"]
-            
         elif entered_pin == st.secrets["lily_pin"]:
             st.session_state["password_correct"] = True
-            st.session_state["current_user"] = "Lily"   # Identify Lily
+            st.session_state["current_user"] = "Lily"
             del st.session_state["password"]
-            
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.text_input(
-            "Enter Your PIN", type="password", on_change=password_entered, key="password"
-        )
+        st.text_input("Enter Your PIN", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        st.text_input(
-            "Enter Your PIN", type="password", on_change=password_entered, key="password"
-        )
+        st.text_input("Enter Your PIN", type="password", on_change=password_entered, key="password")
         st.error("😕 Incorrect PIN")
         return False
     else:
         return True
 
 if check_password():
-    # --- MAIN APP STARTS HERE ---
-    
-    # Identify who is logged in for the greeting
     current_user = st.session_state.get("current_user", "Joint")
     
     # --- GOOGLE SHEETS CONNECTION ---
@@ -61,23 +50,21 @@ if check_password():
         sheet = client.open(SHEET_NAME)
         return sheet
 
-    # --- LOAD DATA ---
     try:
         sheet = get_google_sheet_data()
         trans_ws = sheet.worksheet("Transaction")
         accounts_ws = sheet.worksheet("Accounts")
         
-        # Load Accounts
         accounts_data = accounts_ws.get_all_records()
         accounts_df = pd.DataFrame(accounts_data)
         
         if not accounts_df.empty:
+            # We create the display name for the UI only
             accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
             account_options = accounts_df['DisplayName'].unique().tolist()
         else:
             account_options = []
 
-        # Load Transactions
         trans_data = trans_ws.get_all_records()
         trans_df = pd.DataFrame(trans_data)
         
@@ -101,8 +88,14 @@ if check_password():
     def get_current_date():
         return datetime.now(CALGARY_TZ).date()
 
+    # --- NEW: CLEAN ACCOUNT NAME ---
+    # This removes "Jimmy - " from "Jimmy - TD Checking" so it matches your spreadsheet
+    def clean_account_name(display_name):
+        if " - " in display_name:
+            return display_name.split(" - ", 1)[1]
+        return display_name
+
     # --- APP INTERFACE ---
-    # Personalized Title
     st.title(f"💰 {current_user}'s Finance View")
     
     if st.sidebar.button("🔒 Lock App"):
@@ -118,20 +111,9 @@ if check_password():
             col1, col2 = st.columns(2)
             with col1:
                 date_input = st.date_input("Date", get_current_date())
-                
-                # --- AUTO-SELECT OWNER ---
-                # We determine the index based on who logged in
                 default_owner_idx = get_index(owner_options, current_user)
                 owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
-                
-                amount = st.number_input(
-                    "Amount ($)", 
-                    min_value=0.0, 
-                    step=0.01, 
-                    format="%.2f", 
-                    value=None, 
-                    placeholder="0.00"
-                )
+                amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
 
             with col2:
                 payment_from = st.selectbox("From", from_options, index=0)
@@ -151,10 +133,14 @@ if check_password():
                 else:
                     existing_dates = trans_ws.col_values(1)
                     next_row = len(existing_dates) + 1
-                    
                     final_amount = round(amount, 2)
                     
-                    new_row = [str(date_input), owner, payment_from, payment_to, category, desc, final_amount]
+                    # --- FIX APPLIED HERE ---
+                    # We clean the names before saving to the sheet
+                    final_from = clean_account_name(payment_from)
+                    final_to = clean_account_name(payment_to)
+                    
+                    new_row = [str(date_input), owner, final_from, final_to, category, desc, final_amount]
                     
                     range_name = f"A{next_row}:G{next_row}"
                     trans_ws.update(range_name=range_name, values=[new_row])
@@ -176,12 +162,13 @@ if check_password():
         else:
             st.info("No account data found.")
 
-    # --- TAB 3: MANAGE HISTORY (EDIT & DELETE) ---
+    # --- TAB 3: MANAGE HISTORY ---
     with tab3:
         st.header("Manage Transactions")
         
         if not trans_df.empty:
             trans_df['GS_Row_Num'] = trans_df.index + 2
+            # For history labels, we keep the raw data from the sheet (which is now clean)
             trans_df['Label'] = (
                 "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
                 trans_df['Date'].astype(str) + " | " + 
@@ -190,7 +177,6 @@ if check_password():
             )
             selection_options = trans_df['Label'].tolist()[::-1]
 
-            # --- SECTION: EDIT ---
             with st.expander("✏️ Edit a Transaction", expanded=False):
                 edit_selection = st.selectbox("Select Transaction to Edit", selection_options, key="edit_select")
                 
@@ -212,8 +198,23 @@ if check_password():
                             new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
                             new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
                         with ecol2:
-                            new_from = st.selectbox("From", from_options, index=get_index(from_options, current_data['From']))
-                            new_to = st.selectbox("To", to_options, index=get_index(to_options, current_data['To']))
+                            # Try to find the cleaned name in our full display options
+                            # We must match "TD Checking" back to "Jimmy - TD Checking" for the dropdown to show correctly
+                            
+                            # Helper to find the DisplayName that contains the short name
+                            def find_full_name(short_name, options):
+                                for opt in options:
+                                    if short_name == "External Source" or short_name == "External Merchant":
+                                        return short_name
+                                    if short_name in opt:
+                                        return opt
+                                return options[0]
+
+                            curr_from_full = find_full_name(current_data['From'], from_options)
+                            curr_to_full = find_full_name(current_data['To'], to_options)
+
+                            new_from = st.selectbox("From", from_options, index=get_index(from_options, curr_from_full))
+                            new_to = st.selectbox("To", to_options, index=get_index(to_options, curr_to_full))
                             new_cat = st.selectbox("Category", cat_options, index=get_index(cat_options, current_data['Category']))
                         
                         new_desc = st.text_input("Description", value=current_data['Description'])
@@ -227,12 +228,16 @@ if check_password():
                                 st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
                             else:
                                 range_name = f"A{row_num}:G{row_num}"
-                                updated_values = [[str(new_date), new_owner, new_from, new_to, new_cat, new_desc, new_amount]]
+                                
+                                # Clean names again for edit
+                                clean_from = clean_account_name(new_from)
+                                clean_to = clean_account_name(new_to)
+                                
+                                updated_values = [[str(new_date), new_owner, clean_from, clean_to, new_cat, new_desc, new_amount]]
                                 trans_ws.update(range_name=range_name, values=updated_values)
                                 st.success("Transaction updated successfully!")
                                 st.rerun()
 
-            # --- SECTION: DELETE ---
             with st.expander("🗑️ Delete a Transaction", expanded=False):
                 delete_selection = st.selectbox("Select Transaction to Delete", selection_options, key="del_select")
                 
@@ -246,7 +251,6 @@ if check_password():
                         except Exception as e:
                             st.error(f"Could not delete: {e}")
 
-            # --- HISTORY VIEW ---
             st.markdown("### Recent Activity")
             display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
