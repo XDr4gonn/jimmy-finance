@@ -9,7 +9,52 @@ from datetime import date, datetime
 SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
 CALGARY_TZ = pytz.timezone('America/Edmonton')
 
-st.set_page_config(page_title="Cloud Finance Tracker", layout="centered")
+# PHONE FRIENDLY UPDATE: Collapsed sidebar for more space
+st.set_page_config(
+    page_title="Cloud Finance Tracker", 
+    layout="centered", 
+    initial_sidebar_state="collapsed"
+)
+
+# --- CUSTOM CSS FOR PHONE INTERFACE (White & Smart Blue) ---
+st.markdown("""
+    <style>
+    /* 1. Force White Background */
+    .stApp {
+        background-color: #FFFFFF;
+    }
+    
+    /* 2. Smart Blue Text for Headings */
+    h1, h2, h3, h4, h5, h6 {
+        color: #1565C0 !important; /* Smart Blue (700) */
+        font-family: sans-serif;
+    }
+    
+    /* 3. Darker Blue for regular text/labels (Readability) */
+    p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput {
+        color: #0D47A1 !important; /* Navy Blue */
+    }
+    
+    /* 4. Make Buttons Big and Blue (Easy to tap) */
+    div.stButton > button {
+        background-color: #1565C0;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 24px;
+        font-weight: bold;
+    }
+    div.stButton > button:hover {
+        background-color: #0D47A1;
+        color: white;
+    }
+    
+    /* 5. Metrics/Stats styling */
+    [data-testid="stMetricValue"] {
+        color: #1565C0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- SECURITY & USER DETECTION ---
 def check_password():
@@ -83,7 +128,7 @@ if check_password():
         try:
             return options.index(value)
         except ValueError:
-            return 0 # Default to first item if not found
+            return 0 
 
     def get_current_date():
         return datetime.now(CALGARY_TZ).date()
@@ -97,6 +142,7 @@ if check_password():
     # --- APP INTERFACE ---
     st.title(f"💰 {current_user}'s Finance View")
     
+    # Hidden in sidebar to save phone screen space
     if st.sidebar.button("🔒 Lock App"):
         del st.session_state["password_correct"]
         st.rerun()
@@ -118,15 +164,14 @@ if check_password():
                 amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
 
             with col2:
-                # 2. Auto-select 'From' based on login (NEW FEATURE)
-                default_from_val = "External Source" # Fallback
+                # 2. Auto-select 'From' based on login
+                default_from_val = "External Source"
                 
                 if current_user == "Jimmy":
                     default_from_val = "Jimmy - Credit Card"
                 elif current_user == "Lily":
                     default_from_val = "Lily - Credit Card"
                 
-                # Use get_index to safely find it (defaults to 0 if account name doesn't exist exactly)
                 from_idx = get_index(from_options, default_from_val)
                 
                 payment_from = st.selectbox("From", from_options, index=from_idx)
