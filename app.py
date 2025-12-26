@@ -26,7 +26,9 @@ st.markdown("""
         background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
     }
     div.stButton > button:hover { background-color: #0D47A1; color: white; }
-    [data-testid="stMetricValue"] { color: #1565C0 !important; }
+    
+    /* Metric Styling - Color Coded Logic */
+    [data-testid="stMetricValue"] { font-size: 2rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -152,9 +154,9 @@ if check_password():
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
-                    st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
+                    st.error("🚫 Invalid transaction.")
                 elif payment_from == payment_to:
-                     st.error("🚫 Invalid: 'From' and 'To' cannot be the exact same account.")
+                     st.error("🚫 Invalid: Same account.")
                 else:
                     existing_dates = trans_ws.col_values(1)
                     next_row = len(existing_dates) + 1
@@ -169,10 +171,51 @@ if check_password():
                     st.success("Saved!")
                     st.rerun()
 
-    # --- TAB 2: ACCOUNTS OVERVIEW (Refresh Button Removed) ---
+    # --- TAB 2: MONTHLY PERFORMANCE (NEW METRICS) ---
     with tab2:
-        st.header("Current Balances")
-        # No button here; data loads when the app script runs (on page load or after submit)
+        st.header("Monthly Performance")
+        
+        # 1. Prepare Data
+        if not trans_df.empty:
+            # Convert Date column and Amount column to correct types
+            trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
+            trans_df['Amount'] = pd.to_numeric(trans_df['Amount'], errors='coerce').fillna(0)
+            
+            # 2. Filter for CURRENT MONTH ONLY
+            today = get_current_date()
+            current_month_df = trans_df[
+                (trans_df['DateObj'].dt.month == today.month) & 
+                (trans_df['DateObj'].dt.year == today.year)
+            ]
+            
+            # 3. Calculate Metrics
+            # Income = Category is "Income"
+            total_gain = current_month_df[current_month_df['Category'] == "Income"]['Amount'].sum()
+            
+            # Spend = Category is NOT "Income" and NOT "Transfer"
+            # (We ignore transfers because that's just moving money around, not spending it)
+            spend_df = current_month_df[
+                (~current_month_df['Category'].isin(["Income", "Transfer"]))
+            ]
+            total_spend = spend_df['Amount'].sum()
+            
+            net_gain = total_gain - total_spend
+
+            # 4. Display Metrics
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.metric("Total Gain", f"${total_gain:,.2f}", delta="Income", delta_color="normal")
+            with m2:
+                st.metric("Total Spend", f"${total_spend:,.2f}", delta="-Expense", delta_color="inverse")
+            with m3:
+                # Color code: Green if positive, Red if negative
+                st.metric("Net Gain", f"${net_gain:,.2f}")
+            
+            st.caption(f"Showing data for {today.strftime('%B %Y')}")
+            st.divider()
+
+        # Account Balances Table (kept below for reference)
+        st.subheader("Account Balances")
         if not accounts_df.empty:
             display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
             existing_cols = [c for c in display_cols if c in accounts_df.columns]
