@@ -9,57 +9,29 @@ from datetime import date, datetime
 SHEET_NAME = "Financial Blueprint - Jimmy & Lily" 
 CALGARY_TZ = pytz.timezone('America/Edmonton')
 
-# PHONE FRIENDLY UPDATE: Collapsed sidebar for more space
+# PHONE FRIENDLY: Collapsed sidebar
 st.set_page_config(
     page_title="Cloud Finance Tracker", 
     layout="centered", 
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS FOR PHONE INTERFACE (White & Smart Blue) ---
+# --- CUSTOM CSS (White & Smart Blue) ---
 st.markdown("""
     <style>
-    /* 1. Force White Background */
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    
-    /* 2. Smart Blue Text for Headings */
-    h1, h2, h3, h4, h5, h6 {
-        color: #1565C0 !important; /* Smart Blue (700) */
-        font-family: sans-serif;
-    }
-    
-    /* 3. Darker Blue for regular text/labels (Readability) */
-    p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput {
-        color: #0D47A1 !important; /* Navy Blue */
-    }
-    
-    /* 4. Make Buttons Big and Blue (Easy to tap) */
+    .stApp { background-color: #FFFFFF; }
+    h1, h2, h3, h4, h5, h6 { color: #1565C0 !important; font-family: sans-serif; }
+    p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput { color: #0D47A1 !important; }
     div.stButton > button {
-        background-color: #1565C0;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 10px 24px;
-        font-weight: bold;
+        background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
     }
-    div.stButton > button:hover {
-        background-color: #0D47A1;
-        color: white;
-    }
-    
-    /* 5. Metrics/Stats styling */
-    [data-testid="stMetricValue"] {
-        color: #1565C0 !important;
-    }
+    div.stButton > button:hover { background-color: #0D47A1; color: white; }
+    [data-testid="stMetricValue"] { color: #1565C0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- SECURITY & USER DETECTION ---
 def check_password():
-    """Returns `True` if the user had the correct password."""
-    
     def password_entered():
         entered_pin = st.session_state["password"]
         if entered_pin == st.secrets["jimmy_pin"]:
@@ -104,7 +76,6 @@ if check_password():
         accounts_df = pd.DataFrame(accounts_data)
         
         if not accounts_df.empty:
-            # Create DisplayName: "Jimmy - Credit Card"
             accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
             account_options = accounts_df['DisplayName'].unique().tolist()
         else:
@@ -134,7 +105,6 @@ if check_password():
         return datetime.now(CALGARY_TZ).date()
 
     def clean_account_name(display_name):
-        """Removes 'Jimmy - ' from 'Jimmy - TD Checking' to match Sheet names."""
         if " - " in display_name:
             return display_name.split(" - ", 1)[1]
         return display_name
@@ -142,7 +112,6 @@ if check_password():
     # --- APP INTERFACE ---
     st.title(f"💰 {current_user}'s Finance View")
     
-    # Hidden in sidebar to save phone screen space
     if st.sidebar.button("🔒 Lock App"):
         del st.session_state["password_correct"]
         st.rerun()
@@ -157,29 +126,26 @@ if check_password():
             with col1:
                 date_input = st.date_input("Date", get_current_date())
                 
-                # 1. Auto-select Owner based on login
+                # Auto-select Owner
                 default_owner_idx = get_index(owner_options, current_user)
                 owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
                 
                 amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
 
             with col2:
-                # 2. Auto-select 'From' based on login
+                # Auto-select 'From'
                 default_from_val = "External Source"
-                
                 if current_user == "Jimmy":
                     default_from_val = "Jimmy - Credit Card"
                 elif current_user == "Lily":
                     default_from_val = "Lily - Credit Card"
                 
                 from_idx = get_index(from_options, default_from_val)
-                
                 payment_from = st.selectbox("From", from_options, index=from_idx)
                 payment_to = st.selectbox("To", to_options, index=0)
                 category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
             
             desc = st.text_input("Description", placeholder="e.g. E-Transfer")
-            
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
@@ -193,26 +159,20 @@ if check_password():
                     existing_dates = trans_ws.col_values(1)
                     next_row = len(existing_dates) + 1
                     final_amount = round(amount, 2)
-                    
-                    # Clean names before saving
                     final_from = clean_account_name(payment_from)
                     final_to = clean_account_name(payment_to)
                     
                     new_row = [str(date_input), owner, final_from, final_to, category, desc, final_amount]
-                    
                     range_name = f"A{next_row}:G{next_row}"
                     trans_ws.update(range_name=range_name, values=[new_row])
                     
                     st.success("Saved!")
                     st.rerun()
 
-    # --- TAB 2: ACCOUNTS OVERVIEW ---
+    # --- TAB 2: ACCOUNTS OVERVIEW (Refresh Button Removed) ---
     with tab2:
         st.header("Current Balances")
-        if st.button("🔄 Refresh Data"):
-            st.cache_data.clear()
-            st.rerun()
-            
+        # No button here; data loads when the app script runs (on page load or after submit)
         if not accounts_df.empty:
             display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
             existing_cols = [c for c in display_cols if c in accounts_df.columns]
@@ -236,12 +196,10 @@ if check_password():
 
             with st.expander("✏️ Edit a Transaction", expanded=False):
                 edit_selection = st.selectbox("Select Transaction to Edit", selection_options, key="edit_select")
-                
                 if edit_selection:
                     row_num = int(edit_selection.split(":")[0].replace("Row ", ""))
                     df_index = row_num - 2
                     current_data = trans_df.loc[df_index]
-                    
                     try:
                         current_date = pd.to_datetime(current_data['Date']).date()
                     except:
@@ -255,54 +213,46 @@ if check_password():
                             new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
                             new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
                         with ecol2:
-                            # Helper to map short sheet names back to full display names
                             def find_full_name(short_name, options):
                                 for opt in options:
-                                    if short_name == "External Source" or short_name == "External Merchant":
-                                        return short_name
-                                    if short_name in opt:
-                                        return opt
+                                    if short_name == "External Source" or short_name == "External Merchant": return short_name
+                                    if short_name in opt: return opt
                                 return options[0]
 
                             curr_from_full = find_full_name(current_data['From'], from_options)
                             curr_to_full = find_full_name(current_data['To'], to_options)
-
                             new_from = st.selectbox("From", from_options, index=get_index(from_options, curr_from_full))
                             new_to = st.selectbox("To", to_options, index=get_index(to_options, curr_to_full))
                             new_cat = st.selectbox("Category", cat_options, index=get_index(cat_options, current_data['Category']))
                         
                         new_desc = st.text_input("Description", value=current_data['Description'])
-                        
                         update_submitted = st.form_submit_button("💾 Update Transaction", type="primary")
                         
                         if update_submitted:
                             if new_from == "External Source" and new_to == "External Merchant":
-                                st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
+                                st.error("🚫 Invalid transaction.")
                             elif new_from == new_to:
-                                st.error("🚫 Invalid: 'From' and 'To' cannot be the same.")
+                                st.error("🚫 Invalid: Same account.")
                             else:
                                 range_name = f"A{row_num}:G{row_num}"
-                                # Clean names again
                                 clean_from = clean_account_name(new_from)
                                 clean_to = clean_account_name(new_to)
-                                
                                 updated_values = [[str(new_date), new_owner, clean_from, clean_to, new_cat, new_desc, new_amount]]
                                 trans_ws.update(range_name=range_name, values=updated_values)
-                                st.success("Transaction updated successfully!")
+                                st.success("Updated!")
                                 st.rerun()
 
             with st.expander("🗑️ Delete a Transaction", expanded=False):
                 delete_selection = st.selectbox("Select Transaction to Delete", selection_options, key="del_select")
-                
                 if st.button("Confirm Delete 🗑️", type="primary"):
                     if delete_selection:
                         row_num_del = int(delete_selection.split(":")[0].replace("Row ", ""))
                         try:
                             trans_ws.delete_rows(row_num_del)
-                            st.success(f"Deleted row {row_num_del} successfully!")
+                            st.success(f"Deleted row {row_num_del}!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Could not delete: {e}")
+                            st.error(f"Error: {e}")
 
             st.markdown("### Recent Activity")
             display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
