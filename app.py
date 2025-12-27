@@ -16,19 +16,50 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS (White & Smart Blue) ---
+# --- CUSTOM CSS (White & Smart Blue - DARK MODE FIX) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #FFFFFF; }
+    /* 1. Force White Background for the whole app */
+    .stApp {
+        background-color: #FFFFFF;
+    }
+    
+    /* 2. Text Colors */
     h1, h2, h3, h4, h5, h6 { color: #1565C0 !important; font-family: sans-serif; }
     p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput { color: #0D47A1 !important; }
+    
+    /* 3. Button Styling */
     div.stButton > button {
         background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
     }
     div.stButton > button:hover { background-color: #0D47A1; color: white; }
+
+    /* 4. METRIC CARD FIX FOR DARK MODE PHONES */
+    /* This forces the card container to be white with a shadow, ignoring phone dark mode */
+    div[data-testid="stMetric"] {
+        background-color: #F0F2F6 !important; /* Light grey background for the card */
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #d0d0d0;
+        box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
+    }
     
-    /* Metric Styling - Color Coded Logic */
-    [data-testid="stMetricValue"] { font-size: 2rem !important; }
+    /* Force the LABEL (e.g. "Total Gain") to be dark blue */
+    [data-testid="stMetricLabel"] {
+        color: #0D47A1 !important;
+        font-weight: bold;
+    }
+    
+    /* Force the VALUE (e.g. "$500.00") to be smart blue */
+    [data-testid="stMetricValue"] {
+        color: #1565C0 !important;
+        font-size: 1.8rem !important;
+    }
+    
+    /* Force the DELTA (e.g. "+Income") to be visible */
+    [data-testid="stMetricDelta"] {
+        color: #333333 !important; /* Dark grey for contrast */
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -171,29 +202,25 @@ if check_password():
                     st.success("Saved!")
                     st.rerun()
 
-    # --- TAB 2: MONTHLY PERFORMANCE (NEW METRICS) ---
+    # --- TAB 2: MONTHLY PERFORMANCE ---
     with tab2:
         st.header("Monthly Performance")
         
-        # 1. Prepare Data
         if not trans_df.empty:
-            # Convert Date column and Amount column to correct types
+            # Prepare Data
             trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
             trans_df['Amount'] = pd.to_numeric(trans_df['Amount'], errors='coerce').fillna(0)
             
-            # 2. Filter for CURRENT MONTH ONLY
+            # Filter Current Month
             today = get_current_date()
             current_month_df = trans_df[
                 (trans_df['DateObj'].dt.month == today.month) & 
                 (trans_df['DateObj'].dt.year == today.year)
             ]
             
-            # 3. Calculate Metrics
-            # Income = Category is "Income"
+            # Calculate
             total_gain = current_month_df[current_month_df['Category'] == "Income"]['Amount'].sum()
             
-            # Spend = Category is NOT "Income" and NOT "Transfer"
-            # (We ignore transfers because that's just moving money around, not spending it)
             spend_df = current_month_df[
                 (~current_month_df['Category'].isin(["Income", "Transfer"]))
             ]
@@ -201,20 +228,19 @@ if check_password():
             
             net_gain = total_gain - total_spend
 
-            # 4. Display Metrics
+            # Display with Columns
             m1, m2, m3 = st.columns(3)
             with m1:
-                st.metric("Total Gain", f"${total_gain:,.2f}", delta="Income", delta_color="normal")
+                st.metric("Total Gain", f"${total_gain:,.2f}")
             with m2:
-                st.metric("Total Spend", f"${total_spend:,.2f}", delta="-Expense", delta_color="inverse")
+                st.metric("Total Spend", f"${total_spend:,.2f}")
             with m3:
-                # Color code: Green if positive, Red if negative
                 st.metric("Net Gain", f"${net_gain:,.2f}")
             
             st.caption(f"Showing data for {today.strftime('%B %Y')}")
             st.divider()
 
-        # Account Balances Table (kept below for reference)
+        # Account Balances Table
         st.subheader("Account Balances")
         if not accounts_df.empty:
             display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
