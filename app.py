@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components  # <--- NEW IMPORT FOR KEYBOARD FIX
 import pandas as pd
 import gspread
 import pytz
@@ -19,22 +20,13 @@ st.set_page_config(
 # --- CUSTOM CSS (White & Smart Blue - DARK MODE FIX) ---
 st.markdown("""
     <style>
-    /* 1. Force White Background for the whole app */
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    
-    /* 2. Text Colors */
+    .stApp { background-color: #FFFFFF; }
     h1, h2, h3, h4, h5, h6 { color: #1565C0 !important; font-family: sans-serif; }
     p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput { color: #0D47A1 !important; }
-    
-    /* 3. Button Styling */
     div.stButton > button {
         background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
     }
     div.stButton > button:hover { background-color: #0D47A1; color: white; }
-
-    /* 4. METRIC CARD FIX FOR DARK MODE PHONES */
     div[data-testid="stMetric"] {
         background-color: #F0F2F6 !important; 
         padding: 15px;
@@ -47,6 +39,17 @@ st.markdown("""
     [data-testid="stMetricDelta"] { color: #333333 !important; }
     </style>
     """, unsafe_allow_html=True)
+
+# --- JAVASCRIPT TO FORCE NUMERIC KEYPAD ---
+def force_mobile_keypad():
+    # This script finds the number input and forces the 'decimal' keyboard
+    components.html("""
+        <script>
+            window.parent.document.querySelectorAll('input[type="number"]').forEach(input => {
+                input.setAttribute('inputmode', 'decimal');
+            });
+        </script>
+    """, height=0, width=0)
 
 # --- SECURITY & USER DETECTION ---
 def check_password():
@@ -64,10 +67,10 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.text_input("Enter Your PIN", type="password", on_change=password_entered, key="password")
+        st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        st.text_input("Enter Your PIN", type="password", on_change=password_entered, key="password")
+        st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
         st.error("😕 Incorrect PIN")
         return False
     else:
@@ -150,9 +153,13 @@ if check_password():
             owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
             
             # 3. Amount
+            # We add a unique key here to make sure we can target it
             amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
             
-            # 4. From (Gap Removed Here)
+            # Trigger the Magic Keypad Fix
+            force_mobile_keypad()
+
+            # 4. From
             default_from_val = "External Source"
             if current_user == "Jimmy":
                 default_from_val = "Jimmy - Credit Card"
@@ -171,18 +178,18 @@ if check_password():
             # 7. Description
             desc = st.text_input("Description", placeholder="e.g. E-Transfer")
             
-            st.markdown("###") # Spacer before button only
+            st.markdown("###") 
             
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
-                # --- AUTO-CORRECT CATEGORY LOGIC ---
+                # Auto-Correct
                 if payment_from == "External Source":
                     category = "Income"
                 elif payment_from != "External Source" and payment_to != "External Merchant":
                     category = "Transfer"
                 
-                # --- VALIDATION ---
+                # Validation
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
@@ -324,5 +331,3 @@ if check_password():
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No history yet.")
-
-
