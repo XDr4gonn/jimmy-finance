@@ -35,31 +35,16 @@ st.markdown("""
     div.stButton > button:hover { background-color: #0D47A1; color: white; }
 
     /* 4. METRIC CARD FIX FOR DARK MODE PHONES */
-    /* This forces the card container to be white with a shadow, ignoring phone dark mode */
     div[data-testid="stMetric"] {
-        background-color: #F0F2F6 !important; /* Light grey background for the card */
+        background-color: #F0F2F6 !important; 
         padding: 15px;
         border-radius: 10px;
         border: 1px solid #d0d0d0;
         box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
     }
-    
-    /* Force the LABEL (e.g. "Total Gain") to be dark blue */
-    [data-testid="stMetricLabel"] {
-        color: #0D47A1 !important;
-        font-weight: bold;
-    }
-    
-    /* Force the VALUE (e.g. "$500.00") to be smart blue */
-    [data-testid="stMetricValue"] {
-        color: #1565C0 !important;
-        font-size: 1.8rem !important;
-    }
-    
-    /* Force the DELTA (e.g. "+Income") to be visible */
-    [data-testid="stMetricDelta"] {
-        color: #333333 !important; /* Dark grey for contrast */
-    }
+    [data-testid="stMetricLabel"] { color: #0D47A1 !important; font-weight: bold; }
+    [data-testid="stMetricValue"] { color: #1565C0 !important; font-size: 1.8rem !important; }
+    [data-testid="stMetricDelta"] { color: #333333 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -182,12 +167,23 @@ if check_password():
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
+                # --- NEW LOGIC START: AUTO-CORRECT CATEGORY ---
+                # Rule 1: From External -> Income
+                if payment_from == "External Source":
+                    category = "Income"
+                
+                # Rule 2: Internal to Internal -> Transfer
+                elif payment_from != "External Source" and payment_to != "External Merchant":
+                    category = "Transfer"
+                # --- NEW LOGIC END ---
+
+                # Validation Checks
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
-                    st.error("🚫 Invalid transaction.")
+                    st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
                 elif payment_from == payment_to:
-                     st.error("🚫 Invalid: Same account.")
+                     st.error("🚫 Invalid: 'From' and 'To' cannot be the exact same account.")
                 else:
                     existing_dates = trans_ws.col_values(1)
                     next_row = len(existing_dates) + 1
@@ -199,7 +195,7 @@ if check_password():
                     range_name = f"A{next_row}:G{next_row}"
                     trans_ws.update(range_name=range_name, values=[new_row])
                     
-                    st.success("Saved!")
+                    st.success(f"Saved as {category}!") # Feedback to user
                     st.rerun()
 
     # --- TAB 2: MONTHLY PERFORMANCE ---
@@ -207,18 +203,15 @@ if check_password():
         st.header("Monthly Performance")
         
         if not trans_df.empty:
-            # Prepare Data
             trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
             trans_df['Amount'] = pd.to_numeric(trans_df['Amount'], errors='coerce').fillna(0)
             
-            # Filter Current Month
             today = get_current_date()
             current_month_df = trans_df[
                 (trans_df['DateObj'].dt.month == today.month) & 
                 (trans_df['DateObj'].dt.year == today.year)
             ]
             
-            # Calculate
             total_gain = current_month_df[current_month_df['Category'] == "Income"]['Amount'].sum()
             
             spend_df = current_month_df[
@@ -228,7 +221,6 @@ if check_password():
             
             net_gain = total_gain - total_spend
 
-            # Display with Columns
             m1, m2, m3 = st.columns(3)
             with m1:
                 st.metric("Total Gain", f"${total_gain:,.2f}")
@@ -240,7 +232,6 @@ if check_password():
             st.caption(f"Showing data for {today.strftime('%B %Y')}")
             st.divider()
 
-        # Account Balances Table
         st.subheader("Account Balances")
         if not accounts_df.empty:
             display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
