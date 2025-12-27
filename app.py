@@ -140,7 +140,6 @@ if check_password():
     with tab1:
         st.header("New Transaction")
         
-        # We removed "col1, col2 = st.columns(2)" to force a vertical scrolling list
         with st.form("add_transaction_form", clear_on_submit=True):
             
             # 1. Date
@@ -150,12 +149,10 @@ if check_password():
             default_owner_idx = get_index(owner_options, current_user)
             owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
             
-            # 3. Amount (Big input for easy tapping)
+            # 3. Amount
             amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
             
-            st.divider() # Visual separator between "Who/What" and "Where"
-            
-            # 4. From
+            # 4. From (Gap Removed Here)
             default_from_val = "External Source"
             if current_user == "Jimmy":
                 default_from_val = "Jimmy - Credit Card"
@@ -174,9 +171,8 @@ if check_password():
             # 7. Description
             desc = st.text_input("Description", placeholder="e.g. E-Transfer")
             
-            st.markdown("###") # Little spacer
+            st.markdown("###") # Spacer before button only
             
-            # Submit Button (Full Width)
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
@@ -328,4 +324,5 @@ if check_password():
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No history yet.")
+
 
