@@ -139,51 +139,60 @@ if check_password():
     # --- TAB 1: ENTRY FORM ---
     with tab1:
         st.header("New Transaction")
+        
+        # We removed "col1, col2 = st.columns(2)" to force a vertical scrolling list
         with st.form("add_transaction_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                date_input = st.date_input("Date", get_current_date())
-                
-                # Auto-select Owner
-                default_owner_idx = get_index(owner_options, current_user)
-                owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
-                
-                amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
-
-            with col2:
-                # Auto-select 'From'
-                default_from_val = "External Source"
-                if current_user == "Jimmy":
-                    default_from_val = "Jimmy - Credit Card"
-                elif current_user == "Lily":
-                    default_from_val = "Lily - Credit Card"
-                
-                from_idx = get_index(from_options, default_from_val)
-                payment_from = st.selectbox("From", from_options, index=from_idx)
-                payment_to = st.selectbox("To", to_options, index=0)
-                category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
             
+            # 1. Date
+            date_input = st.date_input("Date", get_current_date())
+            
+            # 2. Owner
+            default_owner_idx = get_index(owner_options, current_user)
+            owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
+            
+            # 3. Amount (Big input for easy tapping)
+            amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
+            
+            st.divider() # Visual separator between "Who/What" and "Where"
+            
+            # 4. From
+            default_from_val = "External Source"
+            if current_user == "Jimmy":
+                default_from_val = "Jimmy - Credit Card"
+            elif current_user == "Lily":
+                default_from_val = "Lily - Credit Card"
+            
+            from_idx = get_index(from_options, default_from_val)
+            payment_from = st.selectbox("From", from_options, index=from_idx)
+            
+            # 5. To
+            payment_to = st.selectbox("To", to_options, index=0)
+            
+            # 6. Category
+            category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
+            
+            # 7. Description
             desc = st.text_input("Description", placeholder="e.g. E-Transfer")
+            
+            st.markdown("###") # Little spacer
+            
+            # Submit Button (Full Width)
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
-                # --- NEW LOGIC START: AUTO-CORRECT CATEGORY ---
-                # Rule 1: From External -> Income
+                # --- AUTO-CORRECT CATEGORY LOGIC ---
                 if payment_from == "External Source":
                     category = "Income"
-                
-                # Rule 2: Internal to Internal -> Transfer
                 elif payment_from != "External Source" and payment_to != "External Merchant":
                     category = "Transfer"
-                # --- NEW LOGIC END ---
-
-                # Validation Checks
+                
+                # --- VALIDATION ---
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
-                    st.error("🚫 Invalid: Money cannot go from 'External' to 'External'.")
+                    st.error("🚫 Invalid transaction.")
                 elif payment_from == payment_to:
-                     st.error("🚫 Invalid: 'From' and 'To' cannot be the exact same account.")
+                     st.error("🚫 Invalid: Same account.")
                 else:
                     existing_dates = trans_ws.col_values(1)
                     next_row = len(existing_dates) + 1
@@ -195,7 +204,7 @@ if check_password():
                     range_name = f"A{next_row}:G{next_row}"
                     trans_ws.update(range_name=range_name, values=[new_row])
                     
-                    st.success(f"Saved as {category}!") # Feedback to user
+                    st.success(f"Saved as {category}!")
                     st.rerun()
 
     # --- TAB 2: MONTHLY PERFORMANCE ---
@@ -319,3 +328,4 @@ if check_password():
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No history yet.")
+
