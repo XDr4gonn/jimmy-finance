@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components  # <--- NEW IMPORT FOR KEYBOARD FIX
+import streamlit.components.v1 as components
 import pandas as pd
 import gspread
 import pytz
@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS (White & Smart Blue - DARK MODE FIX) ---
+# --- CUSTOM CSS (White & Smart Blue) ---
 st.markdown("""
     <style>
     .stApp { background-color: #FFFFFF; }
@@ -42,10 +42,10 @@ st.markdown("""
 
 # --- JAVASCRIPT TO FORCE NUMERIC KEYPAD ---
 def force_mobile_keypad():
-    # This script finds the number input and forces the 'decimal' keyboard
+    # UPDATED: Now targets both Number inputs AND Password inputs
     components.html("""
         <script>
-            window.parent.document.querySelectorAll('input[type="number"]').forEach(input => {
+            window.parent.document.querySelectorAll('input[type="number"], input[type="password"]').forEach(input => {
                 input.setAttribute('inputmode', 'decimal');
             });
         </script>
@@ -68,10 +68,12 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
+        force_mobile_keypad() # Force keypad on login screen
         return False
     elif not st.session_state["password_correct"]:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
         st.error("😕 Incorrect PIN")
+        force_mobile_keypad() # Force keypad on retry screen
         return False
     else:
         return True
@@ -153,10 +155,9 @@ if check_password():
             owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
             
             # 3. Amount
-            # We add a unique key here to make sure we can target it
             amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
             
-            # Trigger the Magic Keypad Fix
+            # Force Keypad for Amount
             force_mobile_keypad()
 
             # 4. From
