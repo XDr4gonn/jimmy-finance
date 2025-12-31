@@ -18,55 +18,52 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS (Bell Theme: Blue Background, White Text) ---
+# --- CUSTOM CSS (Bell Theme: White BG, Blue Text, Black Buttons) ---
 st.markdown("""
     <style>
-    /* Main Background - Bell Blue */
+    /* 1. Main Background - White */
     .stApp { 
-        background-color: #005596; 
-    }
-    
-    /* Text Colors - White */
-    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, div[data-testid="stMetricLabel"] { 
-        color: #FFFFFF !important; 
-        font-family: sans-serif; 
-    }
-    
-    /* Buttons - White with Blue Text */
-    div.stButton > button {
         background-color: #FFFFFF; 
-        color: #005596; 
+    }
+    
+    /* 2. Text Colors - Bell Blue & Font Family */
+    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, div[data-testid="stMetricLabel"] { 
+        color: #005596 !important; 
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; /* Clean corporate sans-serif */
+    }
+    
+    /* Force input labels to be blue */
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stDateInput label {
+        color: #005596 !important;
+    }
+
+    /* 3. Buttons - Black Button, White Word */
+    div.stButton > button {
+        background-color: #000000; 
+        color: #FFFFFF; 
         border-radius: 8px; 
         border: none; 
         padding: 10px 24px; 
         font-weight: bold;
     }
     div.stButton > button:hover { 
-        background-color: #E0E0E0; 
-        color: #003F87; 
+        background-color: #333333; /* Dark Grey on hover */
+        color: #FFFFFF; 
     }
     
-    /* Metrics Cards - Slightly darker/translucent blue for contrast */
+    /* Metrics Cards - Light styling to stand out on white */
     div[data-testid="stMetric"] {
-        background-color: rgba(255, 255, 255, 0.1) !important; 
+        background-color: #F4F9FC !important; /* Very light blue tint */
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+        border: 1px solid #E1E8ED;
+        box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
     }
     [data-testid="stMetricValue"] { 
-        color: #FFFFFF !important; 
+        color: #005596 !important; 
         font-size: 1.8rem !important; 
     }
     
-    /* Inputs - Fix text color inside white boxes */
-    /* Streamlit input widgets usually have white backgrounds. 
-       We need to make sure the text inside them is readable (dark) or the box is dark.
-       Here we keep standard white boxes but ensure labels above them are white. */
-    .stSelectbox label, .stTextInput label, .stNumberInput label, .stDateInput label {
-        color: #FFFFFF !important;
-    }
-
     /* Adjust vertical alignment for side-by-side labels */
     div[data-testid="column"] { display: flex; align-items: center; } 
     </style>
