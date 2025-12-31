@@ -160,7 +160,7 @@ if check_password():
                 return parts[0], parts[1] 
         return default_owner, account_str 
 
-    # --- CORE SAVE LOGIC (USED BY BOTH BUTTONS & FORM) ---
+    # --- CORE SAVE LOGIC ---
     def save_transaction(date_obj, owner_val, from_val, to_val, cat_val, desc_val, amount_val):
         if amount_val is None or amount_val == 0:
             st.error("🚫 Invalid Amount")
@@ -199,7 +199,7 @@ if check_password():
             trans_ws.update(range_name=f"A{next_row}:G{next_row}", values=[new_row])
             st.success(f"✅ Saved: {desc_val} (${final_amount})")
         
-        time.sleep(1.0) # Pause so user sees success message
+        time.sleep(1.0)
         st.rerun()
 
     # --- APP INTERFACE ---
@@ -209,36 +209,11 @@ if check_password():
         del st.session_state["password_correct"]
         st.rerun()
 
-    tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "✏️ Manage History"])
+    # TABS: Added "Quick Add" as the 2nd tab
+    tab1, tab2, tab3, tab4 = st.tabs(["➕ Add Entry", "⚡ Quick Add", "🏦 Balances", "✏️ Manage History"])
 
-    # --- TAB 1: ENTRY FORM ---
+    # --- TAB 1: MANUAL FORM ---
     with tab1:
-        
-        # ⚡ SECTION A: FREQUENT TRANSACTIONS (BUTTONS)
-        if not freq_df.empty:
-            st.subheader("⚡ Quick Add")
-            f_cols = st.columns(2) # Grid layout
-            for index, row in freq_df.iterrows():
-                label = row.get('Label', 'Txn')
-                amt_val = row.get('Amount', 0.0)
-                
-                # Alternate columns for grid effect
-                if f_cols[index % 2].button(f"{label} (${amt_val})", use_container_width=True):
-                    # Prepare data
-                    d_owner = row.get('Owner', current_user) # Default to logged-in user if blank
-                    if pd.isna(d_owner) or d_owner == "": d_owner = current_user
-                    
-                    d_from = row.get('From', 'External Source')
-                    d_to = row.get('To', 'External Merchant')
-                    d_cat = row.get('Category', 'Other')
-                    d_desc = row.get('Description', label)
-                    
-                    # Execute Save
-                    save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
-            
-            st.divider()
-
-        # 📝 SECTION B: MANUAL FORM
         st.subheader("New Transaction")
         
         with st.form("add_transaction_form", clear_on_submit=True):
@@ -285,7 +260,6 @@ if check_password():
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
-                # Validation checks before calling save
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
@@ -293,11 +267,34 @@ if check_password():
                 elif payment_from == payment_to:
                      st.error("🚫 Invalid: Same account.")
                 else:
-                    # Call shared save function
                     save_transaction(date_input, owner_input, payment_from, payment_to, category, desc, amount)
 
-    # --- TAB 2: MONTHLY PERFORMANCE ---
+    # --- TAB 2: QUICK ADD (BUTTONS) ---
     with tab2:
+        st.subheader("⚡ Frequent Transactions")
+        
+        if not freq_df.empty:
+            f_cols = st.columns(2) # Grid layout
+            for index, row in freq_df.iterrows():
+                label = row.get('Label', 'Txn')
+                amt_val = row.get('Amount', 0.0)
+                
+                # Button Logic
+                if f_cols[index % 2].button(f"{label} (${amt_val})", use_container_width=True):
+                    d_owner = row.get('Owner', current_user)
+                    if pd.isna(d_owner) or d_owner == "": d_owner = current_user
+                    
+                    d_from = row.get('From', 'External Source')
+                    d_to = row.get('To', 'External Merchant')
+                    d_cat = row.get('Category', 'Other')
+                    d_desc = row.get('Description', label)
+                    
+                    save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
+        else:
+            st.info("No frequent transactions found in sheet.")
+
+    # --- TAB 3: MONTHLY PERFORMANCE ---
+    with tab3:
         st.header("Monthly Performance")
         if not trans_df.empty:
             trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
@@ -327,8 +324,8 @@ if check_password():
         else:
             st.info("No account data found.")
 
-    # --- TAB 3: MANAGE HISTORY ---
-    with tab3:
+    # --- TAB 4: MANAGE HISTORY ---
+    with tab4:
         st.header("Manage Transactions")
         if not trans_df.empty:
             trans_df['GS_Row_Num'] = trans_df.index + 2
