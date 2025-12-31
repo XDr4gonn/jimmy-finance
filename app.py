@@ -27,25 +27,13 @@ st.markdown("""
         background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
     }
     div.stButton > button:hover { background-color: #0D47A1; color: white; }
-    div[data-testid="stMetric"] {
-        background-color: #F0F2F6 !important; 
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #d0d0d0;
-        box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
-    }
-    [data-testid="stMetricLabel"] { color: #0D47A1 !important; font-weight: bold; }
-    [data-testid="stMetricValue"] { color: #1565C0 !important; font-size: 1.8rem !important; }
-    [data-testid="stMetricDelta"] { color: #333333 !important; }
+    /* Adjust vertical alignment for side-by-side labels */
+    div[data-testid="column"] { display: flex; align-items: center; } 
     </style>
     """, unsafe_allow_html=True)
 
 # --- JAVASCRIPT: MOBILE OPTIMIZATION ---
 def inject_mobile_logic():
-    # This script does two things:
-    # 1. Sets 'inputmode="decimal"' on numbers (for the nice numpad).
-    # 2. Sets 'inputmode="none"' on Dropdowns. This PREVENTS the keyboard from popping up on iOS,
-    #    making it act like a native scrolling picker.
     components.html("""
         <script>
             function applyMobileOptimizations() {
@@ -60,17 +48,14 @@ def inject_mobile_logic():
                 selectInputs.forEach(input => {
                     input.setAttribute('inputmode', 'none'); 
                     input.setAttribute('autocomplete', 'off');
-                    input.style.caretColor = 'transparent'; // Hides the text cursor
+                    input.style.caretColor = 'transparent'; 
                 });
             }
 
-            // Run continuously to catch Streamlit re-renders
             const observer = new MutationObserver(() => {
                 applyMobileOptimizations();
             });
             observer.observe(window.parent.document.body, { childList: true, subtree: true });
-            
-            // Initial run
             applyMobileOptimizations();
         </script>
     """, height=0, width=0)
@@ -119,7 +104,6 @@ if check_password():
         trans_ws = sheet.worksheet("Transaction")
         accounts_ws = sheet.worksheet("Accounts")
         
-        # LOAD ACCOUNTS
         accounts_data = accounts_ws.get_all_records()
         accounts_df = pd.DataFrame(accounts_data)
         
@@ -134,14 +118,11 @@ if check_password():
         else:
             account_options = []
 
-        # LOAD TRANSACTIONS
         trans_data = trans_ws.get_all_records()
         trans_df = pd.DataFrame(trans_data)
         
         if not trans_df.empty:
             trans_df.columns = trans_df.columns.str.strip() 
-            
-            # Validation
             expected_cols = ["Date", "Owner", "From", "To", "Category", "Description", "Amount"]
             if not all(col in trans_df.columns for col in expected_cols):
                 st.error(f"⚠️ Column Error. Found: {list(trans_df.columns)}. Expected: {expected_cols}")
@@ -182,28 +163,59 @@ if check_password():
 
     tab1, tab2, tab3 = st.tabs(["➕ Add Entry", "🏦 Balances", "✏️ Manage History"])
 
-    # --- TAB 1: ENTRY FORM ---
+    # --- TAB 1: ENTRY FORM (UPDATED LAYOUT) ---
     with tab1:
         st.header("New Transaction")
         
         with st.form("add_transaction_form", clear_on_submit=True):
-            date_input = st.date_input("Date", get_current_date())
-            default_owner_idx = get_index(owner_options, current_user)
-            owner_input = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
-            amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
             
-            # Inject JS here to ensure it applies to these inputs
-            inject_mobile_logic()
+            # Layout Config: [Label Column (30%), Input Column (70%)]
+            c_ratio = [3, 7]
 
-            default_from_val = "External Source"
-            if current_user == "Jimmy": default_from_val = "Jimmy - Credit Card"
-            elif current_user == "Lily": default_from_val = "Lily - Credit Card"
+            # 1. Date
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**Date**")
+            with c2: date_input = st.date_input("Date", get_current_date(), label_visibility="collapsed")
             
-            from_idx = get_index(from_options, default_from_val)
-            payment_from = st.selectbox("From", from_options, index=from_idx)
-            payment_to = st.selectbox("To", to_options, index=0)
-            category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"))
-            desc = st.text_input("Description", placeholder="e.g. E-Transfer")
+            # 2. Owner
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**Owner**")
+            with c2: 
+                default_owner_idx = get_index(owner_options, current_user)
+                owner_input = st.selectbox("Owner", owner_options, index=default_owner_idx, label_visibility="collapsed")
+            
+            # 3. Amount
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**Amount ($)**")
+            with c2: amount = st.number_input("Amount", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00", label_visibility="collapsed")
+            
+            inject_mobile_logic() # Ensure keypad works
+
+            # 4. From
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**From**")
+            with c2:
+                default_from_val = "External Source"
+                if current_user == "Jimmy": default_from_val = "Jimmy - Credit Card"
+                elif current_user == "Lily": default_from_val = "Lily - Credit Card"
+                
+                from_idx = get_index(from_options, default_from_val)
+                payment_from = st.selectbox("From", from_options, index=from_idx, label_visibility="collapsed")
+            
+            # 5. To
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**To**")
+            with c2: payment_to = st.selectbox("To", to_options, index=0, label_visibility="collapsed")
+            
+            # 6. Category
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**Category**")
+            with c2: category = st.selectbox("Category", cat_options, index=get_index(cat_options, "Transfer"), label_visibility="collapsed")
+            
+            # 7. Description
+            c1, c2 = st.columns(c_ratio)
+            with c1: st.markdown("**Note**")
+            with c2: desc = st.text_input("Description", placeholder="e.g. E-Transfer", label_visibility="collapsed")
             
             st.markdown("###") 
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
