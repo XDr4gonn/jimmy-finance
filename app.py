@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS (Bell Theme: White BG, Blue Text, Black Buttons) ---
+# --- CUSTOM CSS (Bell Theme: White BG, Blue Text, Outline Buttons) ---
 st.markdown("""
     <style>
     /* 1. Main Background - White */
@@ -29,7 +29,7 @@ st.markdown("""
     /* 2. Text Colors - Bell Blue & Font Family */
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, div[data-testid="stMetricLabel"] { 
         color: #005596 !important; 
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; /* Clean corporate sans-serif */
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
     }
     
     /* Force input labels to be blue */
@@ -37,23 +37,24 @@ st.markdown("""
         color: #005596 !important;
     }
 
-    /* 3. Buttons - Black Button, White Word */
+    /* 3. BUTTONS - White Background, Blue Text, Blue Border (Outline Style) */
     div.stButton > button {
-        background-color: #000000; 
-        color: #FFFFFF; 
+        background-color: #FFFFFF; 
+        color: #005596; 
+        border: 1px solid #005596; /* Blue Outline */
         border-radius: 8px; 
-        border: none; 
         padding: 10px 24px; 
         font-weight: bold;
     }
     div.stButton > button:hover { 
-        background-color: #333333; /* Dark Grey on hover */
-        color: #FFFFFF; 
+        background-color: #F0F8FF; /* Light AliceBlue tint on hover */
+        color: #003F75; 
+        border-color: #003F75;
     }
     
-    /* Metrics Cards - Light styling to stand out on white */
+    /* Metrics Cards */
     div[data-testid="stMetric"] {
-        background-color: #F4F9FC !important; /* Very light blue tint */
+        background-color: #F4F9FC !important; 
         padding: 15px;
         border-radius: 10px;
         border: 1px solid #E1E8ED;
