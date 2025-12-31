@@ -42,7 +42,6 @@ st.markdown("""
 
 # --- JAVASCRIPT TO FORCE NUMERIC KEYPAD ---
 def force_mobile_keypad():
-    # UPDATED: Now targets both Number inputs AND Password inputs
     components.html("""
         <script>
             window.parent.document.querySelectorAll('input[type="number"], input[type="password"]').forEach(input => {
@@ -68,12 +67,12 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
-        force_mobile_keypad() # Force keypad on login screen
+        force_mobile_keypad() 
         return False
     elif not st.session_state["password_correct"]:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
         st.error("😕 Incorrect PIN")
-        force_mobile_keypad() # Force keypad on retry screen
+        force_mobile_keypad() 
         return False
     else:
         return True
@@ -99,6 +98,7 @@ if check_password():
         accounts_df = pd.DataFrame(accounts_data)
         
         if not accounts_df.empty:
+            # Create a display name like "Jimmy - Chequing"
             accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
             account_options = accounts_df['DisplayName'].unique().tolist()
         else:
@@ -127,10 +127,14 @@ if check_password():
     def get_current_date():
         return datetime.now(CALGARY_TZ).date()
 
-    def clean_account_name(display_name):
-        if " - " in display_name:
-            return display_name.split(" - ", 1)[1]
-        return display_name
+    # Function to parse "Jimmy - Chequing" into ("Jimmy", "Chequing")
+    def parse_account_string(account_str, default_owner):
+        if " - " in account_str:
+            parts = account_str.split(" - ", 1)
+            # Check if the first part is a known owner
+            if parts[0] in ["Jimmy", "Lily", "Joint"]:
+                return parts[0], parts[1] # Return (Owner, AccountName)
+        return default_owner, account_str # Fallback
 
     # --- APP INTERFACE ---
     st.title(f"💰 {current_user}'s Finance View")
@@ -150,14 +154,12 @@ if check_password():
             # 1. Date
             date_input = st.date_input("Date", get_current_date())
             
-            # 2. Owner
+            # 2. Owner (Default initiator)
             default_owner_idx = get_index(owner_options, current_user)
-            owner = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
+            owner_input = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
             
             # 3. Amount
             amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
-            
-            # Force Keypad for Amount
             force_mobile_keypad()
 
             # 4. From
@@ -184,13 +186,7 @@ if check_password():
             submitted = st.form_submit_button("Submit Transaction", use_container_width=True)
 
             if submitted:
-                # Auto-Correct
-                if payment_from == "External Source":
-                    category = "Income"
-                elif payment_from != "External Source" and payment_to != "External Merchant":
-                    category = "Transfer"
-                
-                # Validation
+                # Basic Validation
                 if amount is None:
                     st.error("🚫 Please enter an amount.")
                 elif payment_from == "External Source" and payment_to == "External Merchant":
@@ -198,17 +194,74 @@ if check_password():
                 elif payment_from == payment_to:
                      st.error("🚫 Invalid: Same account.")
                 else:
-                    existing_dates = trans_ws.col_values(1)
-                    next_row = len(existing_dates) + 1
                     final_amount = round(amount, 2)
-                    final_from = clean_account_name(payment_from)
-                    final_to = clean_account_name(payment_to)
                     
-                    new_row = [str(date_input), owner, final_from, final_to, category, desc, final_amount]
-                    range_name = f"A{next_row}:G{next_row}"
-                    trans_ws.update(range_name=range_name, values=[new_row])
+                    # LOGIC BRANCH: TRANSFER VS REGULAR
+                    is_transfer = (payment_from != "External Source") and (payment_to != "External Merchant")
                     
-                    st.success(f"Saved as {category}!")
+                    if is_transfer:
+                        # --- SCENARIO A: INTERNAL TRANSFER (SPLIT INTO 2 ROWS) ---
+                        
+                        # 1. Prepare Withdrawal Row (From Source)
+                        owner_from, account_from = parse_account_string(payment_from, owner_input)
+                        # Row: Date, Owner, From, To(Empty), Cat, Desc, Amt
+                        row_withdrawal = [
+                            str(date_input), 
+                            owner_from, 
+                            account_from, 
+                            "", # To is Empty
+                            "Transfer", 
+                            desc, 
+                            final_amount
+                        ]
+                        
+                        # 2. Prepare Deposit Row (To Dest)
+                        owner_to, account_to = parse_account_string(payment_to, owner_input)
+                        # Row: Date, Owner, From(Empty), To, Cat, Desc, Amt
+                        row_deposit = [
+                            str(date_input), 
+                            owner_to, 
+                            "", # From is Empty
+                            account_to, 
+                            "Transfer", 
+                            desc, 
+                            final_amount
+                        ]
+                        
+                        # Append both rows at once
+                        trans_ws.append_rows([row_withdrawal, row_deposit])
+                        st.success(f"Transfer Split & Saved! ({account_from} ➡️ {account_to})")
+
+                    else:
+                        # --- SCENARIO B: INCOME OR EXPENSE (1 ROW) ---
+                        
+                        # Determine Category automatically if needed
+                        final_category = category
+                        if payment_from == "External Source":
+                            final_category = "Income"
+                        elif payment_to == "External Merchant" and category == "Transfer":
+                            # If they left it as Transfer but it's an expense, default to Shopping or Other
+                            final_category = "Shopping" 
+
+                        # Parse names to keep sheet clean (remove "Jimmy - " prefix if preferred, or keep full)
+                        # Based on your screenshot, you likely want "Chequing" not "Jimmy - Chequing" in the cell
+                        # The parse_account_string function handles this.
+                        
+                        row_owner, row_from_acc = parse_account_string(payment_from, owner_input)
+                        _, row_to_acc = parse_account_string(payment_to, owner_input) # Owner ignored for 'To' in single row context usually
+                        
+                        # Logic adjustments for Single Row:
+                        # If Income: From is "External Source", To is Account
+                        # If Expense: From is Account, To is "External Merchant"
+                        
+                        save_from = row_from_acc if payment_from != "External Source" else "External Source"
+                        save_to = row_to_acc if payment_to != "External Merchant" else "External Merchant"
+                        
+                        new_row = [str(date_input), owner_input, save_from, save_to, final_category, desc, final_amount]
+                        
+                        trans_ws.append_row(new_row)
+                        st.success(f"Saved as {final_category}!")
+                    
                     st.rerun()
 
     # --- TAB 2: MONTHLY PERFORMANCE ---
@@ -225,8 +278,10 @@ if check_password():
                 (trans_df['DateObj'].dt.year == today.year)
             ]
             
+            # Calculate Income
             total_gain = current_month_df[current_month_df['Category'] == "Income"]['Amount'].sum()
             
+            # Calculate Spend (Exclude Income and Transfer)
             spend_df = current_month_df[
                 (~current_month_df['Category'].isin(["Income", "Transfer"]))
             ]
@@ -246,6 +301,7 @@ if check_password():
             st.divider()
 
         st.subheader("Account Balances")
+        # Note: Account balances in sheet likely use SUMIF formulas now that rows are split correctly
         if not accounts_df.empty:
             display_cols = ["Owner", "Account", "Current Amount", "Next Payment"]
             existing_cols = [c for c in display_cols if c in accounts_df.columns]
@@ -286,7 +342,9 @@ if check_password():
                             new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
                             new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
                         with ecol2:
+                            # Helper to find full name back from short name
                             def find_full_name(short_name, options):
+                                if short_name == "": return options[0] # Handle empty cells
                                 for opt in options:
                                     if short_name == "External Source" or short_name == "External Merchant": return short_name
                                     if short_name in opt: return opt
@@ -302,33 +360,14 @@ if check_password():
                         update_submitted = st.form_submit_button("💾 Update Transaction", type="primary")
                         
                         if update_submitted:
-                            if new_from == "External Source" and new_to == "External Merchant":
-                                st.error("🚫 Invalid transaction.")
-                            elif new_from == new_to:
-                                st.error("🚫 Invalid: Same account.")
-                            else:
-                                range_name = f"A{row_num}:G{row_num}"
-                                clean_from = clean_account_name(new_from)
-                                clean_to = clean_account_name(new_to)
-                                updated_values = [[str(new_date), new_owner, clean_from, clean_to, new_cat, new_desc, new_amount]]
-                                trans_ws.update(range_name=range_name, values=updated_values)
-                                st.success("Updated!")
-                                st.rerun()
-
-            with st.expander("🗑️ Delete a Transaction", expanded=False):
-                delete_selection = st.selectbox("Select Transaction to Delete", selection_options, key="del_select")
-                if st.button("Confirm Delete 🗑️", type="primary"):
-                    if delete_selection:
-                        row_num_del = int(delete_selection.split(":")[0].replace("Row ", ""))
-                        try:
-                            trans_ws.delete_rows(row_num_del)
-                            st.success(f"Deleted row {row_num_del}!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-
-            st.markdown("### Recent Activity")
-            display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
-            st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
-        else:
-            st.info("No history yet.")
+                            range_name = f"A{row_num}:G{row_num}"
+                            
+                            # For edits, we keep it simple (single row update)
+                            # To handle "Split Row" edits, you'd need complex ID logic.
+                            # We just update the specific row selected.
+                            
+                            _, clean_from = parse_account_string(new_from, new_owner)
+                            _, clean_to = parse_account_string(new_to, new_owner)
+                            
+                            if new_from == "External Source": clean_from = "External Source"
+                            if new_to == "External Merchant": clean_
