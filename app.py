@@ -40,13 +40,38 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- JAVASCRIPT TO FORCE NUMERIC KEYPAD ---
-def force_mobile_keypad():
+# --- JAVASCRIPT: MOBILE OPTIMIZATION ---
+def inject_mobile_logic():
+    # This script does two things:
+    # 1. Sets 'inputmode="decimal"' on numbers (for the nice numpad).
+    # 2. Sets 'inputmode="none"' on Dropdowns. This PREVENTS the keyboard from popping up on iOS,
+    #    making it act like a native scrolling picker.
     components.html("""
         <script>
-            window.parent.document.querySelectorAll('input[type="number"], input[type="password"]').forEach(input => {
-                input.setAttribute('inputmode', 'decimal');
+            function applyMobileOptimizations() {
+                // 1. Force Decimal Keypad for Amounts/PINs
+                const numInputs = window.parent.document.querySelectorAll('input[type="number"], input[type="password"]');
+                numInputs.forEach(input => {
+                    input.setAttribute('inputmode', 'decimal');
+                });
+
+                // 2. iOS Friendly Dropdowns (No Keyboard, just scrolling)
+                const selectInputs = window.parent.document.querySelectorAll('div[data-testid="stSelectbox"] input');
+                selectInputs.forEach(input => {
+                    input.setAttribute('inputmode', 'none'); 
+                    input.setAttribute('autocomplete', 'off');
+                    input.style.caretColor = 'transparent'; // Hides the text cursor
+                });
+            }
+
+            // Run continuously to catch Streamlit re-renders
+            const observer = new MutationObserver(() => {
+                applyMobileOptimizations();
             });
+            observer.observe(window.parent.document.body, { childList: true, subtree: true });
+            
+            // Initial run
+            applyMobileOptimizations();
         </script>
     """, height=0, width=0)
 
@@ -67,12 +92,12 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
-        force_mobile_keypad() 
+        inject_mobile_logic() 
         return False
     elif not st.session_state["password_correct"]:
         st.text_input("Enter Your PIN", type="password", max_chars=4, on_change=password_entered, key="password")
         st.error("😕 Incorrect PIN")
-        force_mobile_keypad() 
+        inject_mobile_logic() 
         return False
     else:
         return True
@@ -99,8 +124,12 @@ if check_password():
         accounts_df = pd.DataFrame(accounts_data)
         
         if not accounts_df.empty:
-            accounts_df.columns = accounts_df.columns.str.strip() # Clean headers
-            accounts_df['DisplayName'] = accounts_df['Owner'] + " - " + accounts_df['Account']
+            accounts_df.columns = accounts_df.columns.str.strip() 
+            accounts_df['DisplayName'] = (
+                accounts_df.get('Owner', pd.Series(['Unknown']*len(accounts_df))) + 
+                " - " + 
+                accounts_df.get('Account', pd.Series(['Unknown']*len(accounts_df)))
+            )
             account_options = accounts_df['DisplayName'].unique().tolist()
         else:
             account_options = []
@@ -109,9 +138,8 @@ if check_password():
         trans_data = trans_ws.get_all_records()
         trans_df = pd.DataFrame(trans_data)
         
-        # ROBUST HEADER CLEANING
         if not trans_df.empty:
-            trans_df.columns = trans_df.columns.str.strip() # Remove invisible spaces from "Owner "
+            trans_df.columns = trans_df.columns.str.strip() 
             
             # Validation
             expected_cols = ["Date", "Owner", "From", "To", "Category", "Description", "Amount"]
@@ -163,7 +191,9 @@ if check_password():
             default_owner_idx = get_index(owner_options, current_user)
             owner_input = st.selectbox("Owner (Initiator)", owner_options, index=default_owner_idx)
             amount = st.number_input("Amount ($)", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="0.00")
-            force_mobile_keypad()
+            
+            # Inject JS here to ensure it applies to these inputs
+            inject_mobile_logic()
 
             default_from_val = "External Source"
             if current_user == "Jimmy": default_from_val = "Jimmy - Credit Card"
@@ -188,29 +218,27 @@ if check_password():
                 else:
                     final_amount = round(amount, 2)
                     
-                    # --- MANUAL ROW CALCULATION (FIXES INSERTION ORDER) ---
-                    # We count all rows in the sheet to find the exact bottom
+                    # Manual Row Calculation
                     all_values = trans_ws.get_all_values()
                     next_row = len(all_values) + 1
                     
                     is_transfer = (payment_from != "External Source") and (payment_to != "External Merchant")
                     
                     if is_transfer:
-                        # --- SCENARIO A: INTERNAL TRANSFER (SPLIT) ---
+                        # Internal Transfer (Split)
                         owner_from, account_from = parse_account_string(payment_from, owner_input)
                         row_withdrawal = [str(date_input), owner_from, account_from, "", "Transfer", desc, final_amount]
                         
                         owner_to, account_to = parse_account_string(payment_to, owner_input)
                         row_deposit = [str(date_input), owner_to, "", account_to, "Transfer", desc, final_amount]
                         
-                        # Update Row X and Row X+1 manually
                         trans_ws.update(range_name=f"A{next_row}:G{next_row}", values=[row_withdrawal])
                         trans_ws.update(range_name=f"A{next_row+1}:G{next_row+1}", values=[row_deposit])
                         
-                        st.success(f"Transfer Split & Saved! (Rows {next_row} & {next_row+1})")
+                        st.success(f"Transfer Split & Saved!")
 
                     else:
-                        # --- SCENARIO B: SINGLE ROW ---
+                        # Single Row
                         final_category = category
                         if payment_from == "External Source": final_category = "Income"
                         elif payment_to == "External Merchant" and category == "Transfer": final_category = "Shopping" 
@@ -223,7 +251,6 @@ if check_password():
                         
                         new_row = [str(date_input), owner_input, save_from, save_to, final_category, desc, final_amount]
                         
-                        # Update exactly at the bottom
                         trans_ws.update(range_name=f"A{next_row}:G{next_row}", values=[new_row])
                         st.success(f"Saved to Row {next_row}!")
                     
@@ -269,7 +296,6 @@ if check_password():
         st.header("Manage Transactions")
         
         if not trans_df.empty:
-            # Create unique labels for selection
             trans_df['GS_Row_Num'] = trans_df.index + 2
             trans_df['Label'] = (
                 "Row " + trans_df['GS_Row_Num'].astype(str) + ": " + 
@@ -347,4 +373,4 @@ if check_password():
             display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
-            st.info("No transaction history found. Add your first entry!")
+            st.info("No transaction history found.")
