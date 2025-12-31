@@ -18,26 +18,57 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM CSS (White & Smart Blue) ---
+# --- CUSTOM CSS (Bell Theme: Blue Background, White Text) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #FFFFFF; }
-    h1, h2, h3, h4, h5, h6 { color: #1565C0 !important; font-family: sans-serif; }
-    p, label, .stMarkdown, .stSelectbox, .stTextInput, .stNumberInput { color: #0D47A1 !important; }
-    div.stButton > button {
-        background-color: #1565C0; color: white; border-radius: 8px; border: none; padding: 10px 24px; font-weight: bold;
+    /* Main Background - Bell Blue */
+    .stApp { 
+        background-color: #005596; 
     }
-    div.stButton > button:hover { background-color: #0D47A1; color: white; }
-    div[data-testid="column"] { display: flex; align-items: center; } 
+    
+    /* Text Colors - White */
+    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, div[data-testid="stMetricLabel"] { 
+        color: #FFFFFF !important; 
+        font-family: sans-serif; 
+    }
+    
+    /* Buttons - White with Blue Text */
+    div.stButton > button {
+        background-color: #FFFFFF; 
+        color: #005596; 
+        border-radius: 8px; 
+        border: none; 
+        padding: 10px 24px; 
+        font-weight: bold;
+    }
+    div.stButton > button:hover { 
+        background-color: #E0E0E0; 
+        color: #003F87; 
+    }
+    
+    /* Metrics Cards - Slightly darker/translucent blue for contrast */
     div[data-testid="stMetric"] {
-        background-color: #F0F2F6 !important; 
+        background-color: rgba(255, 255, 255, 0.1) !important; 
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid #d0d0d0;
-        box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 1px 1px 4px rgba(0,0,0,0.2);
     }
-    [data-testid="stMetricLabel"] { color: #0D47A1 !important; font-weight: bold; }
-    [data-testid="stMetricValue"] { color: #1565C0 !important; font-size: 1.8rem !important; }
+    [data-testid="stMetricValue"] { 
+        color: #FFFFFF !important; 
+        font-size: 1.8rem !important; 
+    }
+    
+    /* Inputs - Fix text color inside white boxes */
+    /* Streamlit input widgets usually have white backgrounds. 
+       We need to make sure the text inside them is readable (dark) or the box is dark.
+       Here we keep standard white boxes but ensure labels above them are white. */
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stDateInput label {
+        color: #FFFFFF !important;
+    }
+
+    /* Adjust vertical alignment for side-by-side labels */
+    div[data-testid="column"] { display: flex; align-items: center; } 
     </style>
     """, unsafe_allow_html=True)
 
@@ -209,7 +240,7 @@ if check_password():
         del st.session_state["password_correct"]
         st.rerun()
 
-    # TABS: Added "Quick Add" as the 2nd tab
+    # TABS
     tab1, tab2, tab3, tab4 = st.tabs(["➕ Add Entry", "⚡ Quick Add", "🏦 Balances", "✏️ Manage History"])
 
     # --- TAB 1: MANUAL FORM ---
