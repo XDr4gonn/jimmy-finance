@@ -41,13 +41,13 @@ st.markdown("""
     div.stButton > button {
         background-color: #FFFFFF; 
         color: #005596; 
-        border: 1px solid #005596; /* Blue Outline */
+        border: 1px solid #005596; 
         border-radius: 8px; 
         padding: 10px 24px; 
         font-weight: bold;
     }
     div.stButton > button:hover { 
-        background-color: #F0F8FF; /* Light AliceBlue tint on hover */
+        background-color: #F0F8FF; 
         color: #003F75; 
         border-color: #003F75;
     }
@@ -238,8 +238,8 @@ if check_password():
         del st.session_state["password_correct"]
         st.rerun()
 
-    # TABS
-    tab1, tab2, tab3, tab4 = st.tabs(["➕ Add Entry", "⚡ Quick Add", "🏦 Balances", "✏️ Manage History"])
+    # TABS: Updated Names and Order
+    tab1, tab2, tab3, tab4 = st.tabs(["➕ Add Entry", "⚡ Quick Add", "🏦 Balances", "📜 History"])
 
     # --- TAB 1: MANUAL FORM ---
     with tab1:
@@ -298,27 +298,68 @@ if check_password():
                 else:
                     save_transaction(date_input, owner_input, payment_from, payment_to, category, desc, amount)
 
-    # --- TAB 2: QUICK ADD (BUTTONS) ---
+    # --- TAB 2: QUICK ADD (ORGANIZED LAYOUT) ---
     with tab2:
         st.subheader("⚡ Frequent Transactions")
         
         if not freq_df.empty:
-            f_cols = st.columns(2) # Grid layout
-            for index, row in freq_df.iterrows():
-                label = row.get('Label', 'Txn')
-                amt_val = row.get('Amount', 0.0)
-                
-                # Button Logic
-                if f_cols[index % 2].button(f"{label} (${amt_val})", use_container_width=True):
-                    d_owner = row.get('Owner', current_user)
-                    if pd.isna(d_owner) or d_owner == "": d_owner = current_user
+            # 1. Fill missing owners in DataFrame with "Joint" to handle blanks safely
+            if 'Owner' not in freq_df.columns: freq_df['Owner'] = 'Joint'
+            freq_df['Owner'] = freq_df['Owner'].fillna('Joint').replace('', 'Joint')
+
+            # LAYER 1: OWNERS
+            owners = ["Jimmy", "Lily", "Joint"]
+            owner_tabs = st.tabs(owners)
+
+            for i, owner_name in enumerate(owners):
+                with owner_tabs[i]:
+                    # Filter for specific owner
+                    owner_df = freq_df[freq_df['Owner'] == owner_name]
                     
-                    d_from = row.get('From', 'External Source')
-                    d_to = row.get('To', 'External Merchant')
-                    d_cat = row.get('Category', 'Other')
-                    d_desc = row.get('Description', label)
-                    
-                    save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
+                    if owner_df.empty:
+                        st.caption(f"No shortcuts for {owner_name}.")
+                    else:
+                        # LAYER 2: CATEGORY TYPES
+                        type_tabs = st.tabs(["💸 Spending", "💰 Income", "⇄ Transfer"])
+                        
+                        # Helper to display buttons grid
+                        def display_buttons(df_subset):
+                            if df_subset.empty:
+                                st.caption("No buttons.")
+                                return
+                            
+                            f_cols = st.columns(2)
+                            # Use enumerate to get a safe index for columns
+                            for idx, (_, row) in enumerate(df_subset.iterrows()):
+                                label = row.get('Label', 'Txn')
+                                amt_val = row.get('Amount', 0.0)
+                                
+                                # Use unique key for every button
+                                b_key = f"{owner_name}_{idx}_{label}"
+                                
+                                if f_cols[idx % 2].button(f"{label} (${amt_val})", key=b_key, use_container_width=True):
+                                    d_owner = row.get('Owner', current_user)
+                                    d_from = row.get('From', 'External Source')
+                                    d_to = row.get('To', 'External Merchant')
+                                    d_cat = row.get('Category', 'Other')
+                                    d_desc = row.get('Description', label)
+                                    save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
+
+                        # --- Tab A: Spending (Everything NOT Income/Transfer) ---
+                        with type_tabs[0]:
+                            spending_df = owner_df[~owner_df['Category'].isin(["Income", "Transfer"])]
+                            display_buttons(spending_df)
+
+                        # --- Tab B: Income ---
+                        with type_tabs[1]:
+                            income_df = owner_df[owner_df['Category'] == "Income"]
+                            display_buttons(income_df)
+
+                        # --- Tab C: Transfer ---
+                        with type_tabs[2]:
+                            transfer_df = owner_df[owner_df['Category'] == "Transfer"]
+                            display_buttons(transfer_df)
+
         else:
             st.info("No frequent transactions found in sheet.")
 
@@ -326,8 +367,10 @@ if check_password():
     with tab3:
         st.header("Monthly Performance")
         if not trans_df.empty:
+            # Add date object for calculation, but we won't show it in Tab 4
             trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
             trans_df['Amount'] = pd.to_numeric(trans_df['Amount'], errors='coerce').fillna(0)
+            
             today = get_current_date()
             current_month_df = trans_df[
                 (trans_df['DateObj'].dt.month == today.month) & 
@@ -353,9 +396,9 @@ if check_password():
         else:
             st.info("No account data found.")
 
-    # --- TAB 4: MANAGE HISTORY ---
+    # --- TAB 4: HISTORY (RENAMED & CLEANED) ---
     with tab4:
-        st.header("Manage Transactions")
+        st.header("Transaction History")
         if not trans_df.empty:
             trans_df['GS_Row_Num'] = trans_df.index + 2
             trans_df['Label'] = (
@@ -424,7 +467,11 @@ if check_password():
                             st.rerun()
 
             st.markdown("### Recent Activity")
-            display_df = trans_df.drop(columns=['GS_Row_Num', 'Label'])
+            
+            # CLEANUP: Remove calculation columns before display
+            # We drop 'DateObj' (internal) and 'Label'/'GS_Row_Num' (helper)
+            display_df = trans_df.drop(columns=['GS_Row_Num', 'Label', 'DateObj'], errors='ignore')
+            
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No transaction history found.")
