@@ -21,23 +21,14 @@ st.set_page_config(
 # --- CUSTOM CSS (Bell Theme: White BG, Blue Text, Outline Buttons) ---
 st.markdown("""
     <style>
-    /* 1. Main Background - White */
-    .stApp { 
-        background-color: #FFFFFF; 
-    }
-    
-    /* 2. Text Colors - Bell Blue & Font Family */
+    .stApp { background-color: #FFFFFF; }
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, div[data-testid="stMetricLabel"] { 
         color: #005596 !important; 
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
     }
-    
-    /* Force input labels to be blue */
     .stSelectbox label, .stTextInput label, .stNumberInput label, .stDateInput label {
         color: #005596 !important;
     }
-
-    /* 3. BUTTONS - White Background, Blue Text, Blue Border (Outline Style) */
     div.stButton > button {
         background-color: #FFFFFF; 
         color: #005596; 
@@ -51,8 +42,6 @@ st.markdown("""
         color: #003F75; 
         border-color: #003F75;
     }
-    
-    /* Metrics Cards */
     div[data-testid="stMetric"] {
         background-color: #F4F9FC !important; 
         padding: 15px;
@@ -64,8 +53,6 @@ st.markdown("""
         color: #005596 !important; 
         font-size: 1.8rem !important; 
     }
-    
-    /* Adjust vertical alignment for side-by-side labels */
     div[data-testid="column"] { display: flex; align-items: center; } 
     </style>
     """, unsafe_allow_html=True)
@@ -75,12 +62,8 @@ def inject_mobile_logic():
     components.html("""
         <script>
             function applyMobileOptimizations() {
-                // 1. Force Decimal Keypad
                 const numInputs = window.parent.document.querySelectorAll('input[type="number"], input[type="password"]');
-                numInputs.forEach(input => {
-                    input.setAttribute('inputmode', 'decimal');
-                });
-                // 2. iOS Friendly Dropdowns
+                numInputs.forEach(input => { input.setAttribute('inputmode', 'decimal'); });
                 const selectInputs = window.parent.document.querySelectorAll('div[data-testid="stSelectbox"] input');
                 selectInputs.forEach(input => {
                     input.setAttribute('inputmode', 'none'); 
@@ -162,7 +145,7 @@ if check_password():
             if not freq_df.empty:
                 freq_df.columns = freq_df.columns.str.strip()
         except:
-            freq_df = pd.DataFrame() # Graceful fallback if sheet missing
+            freq_df = pd.DataFrame() 
 
     except Exception as e:
         st.error(f"Error connecting to Google Sheets: {e}")
@@ -189,6 +172,13 @@ if check_password():
                 return parts[0], parts[1] 
         return default_owner, account_str 
 
+    def find_full_name(short_name, options):
+        if not short_name: return options[0]
+        for opt in options:
+            if short_name == "External Source" or short_name == "External Merchant": return short_name
+            if short_name in opt: return opt
+        return options[0]
+
     # --- CORE SAVE LOGIC ---
     def save_transaction(date_obj, owner_val, from_val, to_val, cat_val, desc_val, amount_val):
         if amount_val is None or amount_val == 0:
@@ -202,7 +192,6 @@ if check_password():
         is_transfer = (from_val != "External Source") and (to_val != "External Merchant")
 
         if is_transfer:
-            # Transfer Split Logic
             owner_from, account_from = parse_account_string(from_val, owner_val)
             row_withdrawal = [str(date_obj), owner_from, account_from, "", "Transfer", desc_val, final_amount]
             
@@ -213,7 +202,6 @@ if check_password():
             trans_ws.update(range_name=f"A{next_row+1}:G{next_row+1}", values=[row_deposit])
             st.success(f"✅ Saved Transfer: {desc_val}")
         else:
-            # Single Row Logic
             final_category = cat_val
             if from_val == "External Source": final_category = "Income"
             elif to_val == "External Merchant" and cat_val == "Transfer": final_category = "Shopping" 
@@ -238,16 +226,14 @@ if check_password():
         del st.session_state["password_correct"]
         st.rerun()
 
-    # TABS: Updated Names and Order
+    # TABS
     tab1, tab2, tab3, tab4 = st.tabs(["➕ Add Entry", "⚡ Quick Add", "🏦 Balances", "📜 History"])
 
     # --- TAB 1: MANUAL FORM ---
     with tab1:
         st.subheader("New Transaction")
-        
         with st.form("add_transaction_form", clear_on_submit=True):
             c_ratio = [3, 7]
-
             c1, c2 = st.columns(c_ratio)
             with c1: st.markdown("**Date**")
             with c2: date_input = st.date_input("Date", get_current_date(), label_visibility="collapsed")
@@ -298,45 +284,34 @@ if check_password():
                 else:
                     save_transaction(date_input, owner_input, payment_from, payment_to, category, desc, amount)
 
-    # --- TAB 2: QUICK ADD (ORGANIZED LAYOUT) ---
+    # --- TAB 2: QUICK ADD ---
     with tab2:
         st.subheader("⚡ Frequent Transactions")
         
         if not freq_df.empty:
-            # 1. Fill missing owners in DataFrame with "Joint" to handle blanks safely
             if 'Owner' not in freq_df.columns: freq_df['Owner'] = 'Joint'
             freq_df['Owner'] = freq_df['Owner'].fillna('Joint').replace('', 'Joint')
 
-            # LAYER 1: OWNERS
             owners = ["Jimmy", "Lily", "Joint"]
             owner_tabs = st.tabs(owners)
 
             for i, owner_name in enumerate(owners):
                 with owner_tabs[i]:
-                    # Filter for specific owner
                     owner_df = freq_df[freq_df['Owner'] == owner_name]
-                    
                     if owner_df.empty:
                         st.caption(f"No shortcuts for {owner_name}.")
                     else:
-                        # LAYER 2: CATEGORY TYPES
                         type_tabs = st.tabs(["💸 Spending", "💰 Income", "⇄ Transfer"])
                         
-                        # Helper to display buttons grid
                         def display_buttons(df_subset):
                             if df_subset.empty:
                                 st.caption("No buttons.")
                                 return
-                            
                             f_cols = st.columns(2)
-                            # Use enumerate to get a safe index for columns
                             for idx, (_, row) in enumerate(df_subset.iterrows()):
                                 label = row.get('Label', 'Txn')
                                 amt_val = row.get('Amount', 0.0)
-                                
-                                # Use unique key for every button
                                 b_key = f"{owner_name}_{idx}_{label}"
-                                
                                 if f_cols[idx % 2].button(f"{label} (${amt_val})", key=b_key, use_container_width=True):
                                     d_owner = row.get('Owner', current_user)
                                     d_from = row.get('From', 'External Source')
@@ -345,17 +320,12 @@ if check_password():
                                     d_desc = row.get('Description', label)
                                     save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
 
-                        # --- Tab A: Spending (Everything NOT Income/Transfer) ---
                         with type_tabs[0]:
                             spending_df = owner_df[~owner_df['Category'].isin(["Income", "Transfer"])]
                             display_buttons(spending_df)
-
-                        # --- Tab B: Income ---
                         with type_tabs[1]:
                             income_df = owner_df[owner_df['Category'] == "Income"]
                             display_buttons(income_df)
-
-                        # --- Tab C: Transfer ---
                         with type_tabs[2]:
                             transfer_df = owner_df[owner_df['Category'] == "Transfer"]
                             display_buttons(transfer_df)
@@ -363,14 +333,73 @@ if check_password():
         else:
             st.info("No frequent transactions found in sheet.")
 
+        # --- EDIT SHORTCUTS SECTION ---
+        st.divider()
+        with st.expander("⚙️ Edit or Delete Shortcuts", expanded=False):
+            if not freq_df.empty:
+                shortcut_labels = freq_df['Label'].tolist()
+                selected_shortcut_label = st.selectbox("Select Shortcut to Edit", shortcut_labels)
+                
+                if selected_shortcut_label:
+                    shortcut_idx = freq_df[freq_df['Label'] == selected_shortcut_label].index[0]
+                    current_shortcut = freq_df.iloc[shortcut_idx]
+                    sheet_row_num = shortcut_idx + 2 
+
+                    with st.form("edit_shortcut_form"):
+                        st.caption(f"Editing: {selected_shortcut_label}")
+                        
+                        ec1, ec2 = st.columns(2)
+                        with ec1:
+                            new_label = st.text_input("Button Label", current_shortcut['Label'])
+                            new_amt = st.number_input("Default Amount", value=float(current_shortcut['Amount']), step=0.01)
+                            new_owner = st.selectbox("Default Owner", owner_options, index=get_index(owner_options, current_shortcut['Owner']))
+                        
+                        with ec2:
+                            curr_from_full = find_full_name(current_shortcut['From'], from_options)
+                            curr_to_full = find_full_name(current_shortcut['To'], to_options)
+                            
+                            new_from = st.selectbox("Default From", from_options, index=get_index(from_options, curr_from_full))
+                            new_to = st.selectbox("Default To", to_options, index=get_index(to_options, curr_to_full))
+                            new_cat = st.selectbox("Default Category", cat_options, index=get_index(cat_options, current_shortcut['Category']))
+                        
+                        new_desc = st.text_input("Default Description", current_shortcut['Description'])
+                        
+                        col_save, col_del = st.columns([1,1])
+                        with col_save:
+                            submitted = st.form_submit_button("💾 Save Changes", type="primary")
+                        with col_del:
+                            delete_check = st.checkbox("🗑️ Delete this shortcut?")
+
+                        if submitted:
+                            if delete_check:
+                                freq_ws.delete_rows(sheet_row_num)
+                                st.success(f"Deleted {selected_shortcut_label}!")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                if new_from == "External Source": s_from = "External Source"
+                                else: s_from = new_from
+                                
+                                if new_to == "External Merchant": s_to = "External Merchant"
+                                else: s_to = new_to
+
+                                # Write Order: Label, Amount, From, To, Category, Description, Owner
+                                row_values = [
+                                    new_label, new_amt, s_from, s_to, new_cat, new_desc, new_owner
+                                ]
+                                freq_ws.update(range_name=f"A{sheet_row_num}:G{sheet_row_num}", values=[row_values])
+                                st.success("Shortcut Updated!")
+                                time.sleep(1)
+                                st.rerun()
+            else:
+                 st.info("No shortcuts to edit.")
+
     # --- TAB 3: MONTHLY PERFORMANCE ---
     with tab3:
         st.header("Monthly Performance")
         if not trans_df.empty:
-            # Add date object for calculation, but we won't show it in Tab 4
             trans_df['DateObj'] = pd.to_datetime(trans_df['Date'], errors='coerce')
             trans_df['Amount'] = pd.to_numeric(trans_df['Amount'], errors='coerce').fillna(0)
-            
             today = get_current_date()
             current_month_df = trans_df[
                 (trans_df['DateObj'].dt.month == today.month) & 
@@ -396,7 +425,7 @@ if check_password():
         else:
             st.info("No account data found.")
 
-    # --- TAB 4: HISTORY (RENAMED & CLEANED) ---
+    # --- TAB 4: HISTORY ---
     with tab4:
         st.header("Transaction History")
         if not trans_df.empty:
@@ -409,7 +438,6 @@ if check_password():
             )
             selection_options = trans_df['Label'].tolist()[::-1]
 
-            # DELETE
             with st.expander("🗑️ Delete a Transaction", expanded=False):
                 delete_selection = st.selectbox("Select Transaction to Delete", selection_options, key="del_select")
                 if st.button("Confirm Delete 🗑️", type="primary"):
@@ -422,7 +450,6 @@ if check_password():
                         except Exception as e:
                             st.error(f"Error: {e}")
 
-            # EDIT
             with st.expander("✏️ Edit a Transaction", expanded=False):
                 edit_selection = st.selectbox("Select Transaction to Edit", selection_options, key="edit_select")
                 if edit_selection:
@@ -440,38 +467,23 @@ if check_password():
                             new_owner = st.selectbox("Owner", owner_options, index=get_index(owner_options, current_data['Owner']))
                             new_amount = st.number_input("Amount ($)", value=float(current_data['Amount']), step=0.01, format="%.2f")
                         with ecol2:
-                            def find_full_name(short_name, options):
-                                if not short_name: return options[0]
-                                for opt in options:
-                                    if short_name == "External Source" or short_name == "External Merchant": return short_name
-                                    if short_name in opt: return opt
-                                return options[0]
                             curr_from_full = find_full_name(current_data['From'], from_options)
                             curr_to_full = find_full_name(current_data['To'], to_options)
                             new_from = st.selectbox("From", from_options, index=get_index(from_options, curr_from_full))
                             new_to = st.selectbox("To", to_options, index=get_index(to_options, curr_to_full))
                             new_cat = st.selectbox("Category", cat_options, index=get_index(cat_options, current_data['Category']))
-                        
                         new_desc = st.text_input("Description", value=current_data['Description'])
                         update_submitted = st.form_submit_button("💾 Update Transaction", type="primary")
                         
                         if update_submitted:
                             range_name = f"A{row_num}:G{row_num}"
-                            _, clean_from = parse_account_string(new_from, new_owner)
-                            _, clean_to = parse_account_string(new_to, new_owner)
-                            if new_from == "External Source": clean_from = "External Source"
-                            if new_to == "External Merchant": clean_to = "External Merchant"
-                            updated_values = [[str(new_date), new_owner, clean_from, clean_to, new_cat, new_desc, new_amount]]
+                            updated_values = [[str(new_date), new_owner, new_from, new_to, new_cat, new_desc, new_amount]]
                             trans_ws.update(range_name=range_name, values=updated_values)
                             st.success("Updated!")
                             st.rerun()
 
             st.markdown("### Recent Activity")
-            
-            # CLEANUP: Remove calculation columns before display
-            # We drop 'DateObj' (internal) and 'Label'/'GS_Row_Num' (helper)
             display_df = trans_df.drop(columns=['GS_Row_Num', 'Label', 'DateObj'], errors='ignore')
-            
             st.dataframe(display_df.tail(15).iloc[::-1], use_container_width=True, hide_index=True)
         else:
             st.info("No transaction history found.")
