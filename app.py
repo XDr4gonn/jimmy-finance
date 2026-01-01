@@ -284,9 +284,41 @@ if check_password():
                 else:
                     save_transaction(date_input, owner_input, payment_from, payment_to, category, desc, amount)
 
-    # --- TAB 2: QUICK ADD ---
+    # --- TAB 2: QUICK ADD (WITH CONFIRMATION) ---
     with tab2:
         st.subheader("⚡ Frequent Transactions")
+        
+        # Initialize session state for confirmation
+        if "pending_quick_add" not in st.session_state:
+            st.session_state.pending_quick_add = None
+
+        # 1. DISPLAY CONFIRMATION BOX (If pending)
+        if st.session_state.pending_quick_add:
+            p_data = st.session_state.pending_quick_add
+            
+            with st.container():
+                st.info(f"❓ Confirm Transaction: **{p_data['desc']}** for **${p_data['amount']}**?")
+                
+                col_confirm, col_cancel = st.columns(2)
+                with col_confirm:
+                    if st.button("✅ YES, ADD IT", use_container_width=True):
+                        # Commit Transaction
+                        save_transaction(
+                            p_data['date'], p_data['owner'], p_data['from'], 
+                            p_data['to'], p_data['cat'], p_data['desc'], p_data['amount']
+                        )
+                        st.session_state.pending_quick_add = None # Clear after save (save_transaction reruns anyway)
+                
+                with col_cancel:
+                    if st.button("❌ CANCEL", use_container_width=True):
+                        st.session_state.pending_quick_add = None
+                        st.rerun()
+            
+            st.divider() # Visual separation
+        
+        # 2. DISPLAY BUTTONS (Only if not pending, or show below)
+        # We show them below so user can see what they clicked, but maybe disabled? 
+        # Standard Streamlit flow: just show them.
         
         if not freq_df.empty:
             if 'Owner' not in freq_df.columns: freq_df['Owner'] = 'Joint'
@@ -312,13 +344,26 @@ if check_password():
                                 label = row.get('Label', 'Txn')
                                 amt_val = row.get('Amount', 0.0)
                                 b_key = f"{owner_name}_{idx}_{label}"
+                                
+                                # BUTTON ACTION: STAGE FOR CONFIRMATION
                                 if f_cols[idx % 2].button(f"{label} (${amt_val})", key=b_key, use_container_width=True):
                                     d_owner = row.get('Owner', current_user)
                                     d_from = row.get('From', 'External Source')
                                     d_to = row.get('To', 'External Merchant')
                                     d_cat = row.get('Category', 'Other')
                                     d_desc = row.get('Description', label)
-                                    save_transaction(get_current_date(), d_owner, d_from, d_to, d_cat, d_desc, amt_val)
+                                    
+                                    # Store in Session State instead of Saving
+                                    st.session_state.pending_quick_add = {
+                                        "date": get_current_date(),
+                                        "owner": d_owner,
+                                        "from": d_from,
+                                        "to": d_to,
+                                        "cat": d_cat,
+                                        "desc": d_desc,
+                                        "amount": amt_val
+                                    }
+                                    st.rerun()
 
                         with type_tabs[0]:
                             spending_df = owner_df[~owner_df['Category'].isin(["Income", "Transfer"])]
@@ -383,10 +428,7 @@ if check_password():
                                 if new_to == "External Merchant": s_to = "External Merchant"
                                 else: s_to = new_to
 
-                                # Write Order: Label, Amount, From, To, Category, Description, Owner
-                                row_values = [
-                                    new_label, new_amt, s_from, s_to, new_cat, new_desc, new_owner
-                                ]
+                                row_values = [new_label, new_amt, s_from, s_to, new_cat, new_desc, new_owner]
                                 freq_ws.update(range_name=f"A{sheet_row_num}:G{sheet_row_num}", values=[row_values])
                                 st.success("Shortcut Updated!")
                                 time.sleep(1)
